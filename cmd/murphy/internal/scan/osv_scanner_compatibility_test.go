@@ -72,6 +72,13 @@ func TestOSVScannerSBOMCompatibility(t *testing.T) {
 			files: map[string]string{
 				"package-lock.json": `{"name":"demo","version":"1.0.0","lockfileVersion":3,"requires":true,"packages":{"":{"name":"demo","version":"1.0.0","dependencies":{"lodash":"4.17.21"}},"node_modules/lodash":{"version":"4.17.21"}}}`,
 			},
+			wantPurl: "pkg:npm/lodash@4.17.21",
+		},
+		{
+			name: "npm-package-lock-invalid-root",
+			files: map[string]string{
+				"package-lock.json": `{"lockfileVersion":3,"packages":{"node_modules/lodash":{"version":"4.17.21"}}}`,
+			},
 			incomplete: true,
 		},
 		{

@@ -79,17 +79,30 @@ func ScanNpmProject(ctx context.Context) ([]model.Module, error) {
 		logger.Warn("director skip ", zap.String("workspace directory detected", dir))
 		return make([]model.Module, 0), nil
 	}
+	lockfilePath := filepath.Join(dir, LockFileName)
 	data, e := os.ReadFile(packagePath)
+	var packageFile *pkgFile
 	if e != nil {
-		return nil, fmt.Errorf("reading package file: %w", e)
-	}
-	packageFile, e := parsePkgFile(data)
-	if e != nil {
-		return nil, e
+		if !errors.Is(e, os.ErrNotExist) {
+			return nil, fmt.Errorf("reading package file: %w", e)
+		}
+		data, e = os.ReadFile(lockfilePath)
+		if e != nil {
+			return nil, fmt.Errorf("reading package-lock file without package.json: %w", e)
+		}
+		packageFile, e = packageFileFromLockfile(data)
+		if e != nil {
+			return nil, e
+		}
+		module.ModulePath = lockfilePath
+	} else {
+		packageFile, e = parsePkgFile(data)
+		if e != nil {
+			return nil, e
+		}
 	}
 	module.ModuleName = packageFile.Name
 	module.ModuleVersion = packageFile.Version
-	lockfilePath := filepath.Join(dir, LockFileName)
 	if !utils.IsPathExist(lockfilePath) {
 		e = doNpmInstallInDir(ctx, dir)
 		if errors.Is(e, autoBuildDisabled) {
@@ -114,10 +127,10 @@ func ScanNpmProject(ctx context.Context) ([]model.Module, error) {
 	if e != nil {
 		return nil, e
 	}
-	if lockfileVer == 3 {
+	if lockfileVer == 2 || lockfileVer == 3 {
 		parsed, e := processLockfileV3(data)
 		if e != nil {
-			return nil, fmt.Errorf("v3lockfile: %w", e)
+			return nil, fmt.Errorf("packages lockfile: %w", e)
 		}
 		module.ModuleName = parsed.CompName
 		module.ModuleVersion = parsed.CompVersion

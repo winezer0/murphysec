@@ -24,15 +24,24 @@ type v3Package struct {
 	OptionalDependencies map[string]string `json:"optionalDependencies"`
 	PeerDependencies     map[string]string `json:"peerDependencies"`
 	Dev                  bool              `json:"dev"`
+	Link                 bool              `json:"link"`
+	Resolved             string            `json:"resolved"`
+	PeerDependenciesMeta map[string]struct {
+		Optional bool `json:"optional"`
+	} `json:"peerDependenciesMeta"`
 }
 
 func processLockfileV3(data []byte) (r *model.DependencyItem, e error) {
+	version, err := parseLockfileVersion(data)
+	if err != nil {
+		return nil, err
+	}
+	if version != 2 && version != 3 {
+		return nil, fmt.Errorf("unsupported packages lockfile version: %d", version)
+	}
 	var lockfile v3Lockfile
 	if e := json.Unmarshal(data, &lockfile); e != nil {
 		return nil, fmt.Errorf("parse lockfile failed: %w", e)
-	}
-	if lockfile.LockfileVersion != 3 {
-		return nil, fmt.Errorf("unsupported lockfile version: %d", lockfile.LockfileVersion)
 	}
 	if lockfile.Packages == nil {
 		lockfile.Packages = make(map[string]v3Package)
@@ -66,6 +75,12 @@ func processLockfileV3(data []byte) (r *model.DependencyItem, e error) {
 	}
 	rootNode.CompName = lockfile.Name
 	rootNode.CompVersion = lockfile.Version
+	if rootNode.CompName == "" {
+		rootNode.CompName = lockfile.Packages[""].Name
+	}
+	if rootNode.CompVersion == "" {
+		rootNode.CompVersion = lockfile.Packages[""].Version
+	}
 	for i := range rootNode.Dependencies {
 		rootNode.Dependencies[i].DependencyRelation = model.DependencyRelationDirect
 	}
@@ -84,9 +99,9 @@ func _visitV3[T any](lockfile *v3Lockfile, pred *v3Package, rPath []string, path
 		}
 	}
 	var predV = [2]string{pred.Name, pred.Version}
-	var traversalDependencies = func(isDev bool, m map[string]string) {
+	var traversalDependencies = func(m map[string]string) {
 		for succName := range m {
-			var succPath, succSegments, succ, ok = npmFindCorrectPair(lockfile.Packages, rPath, succName)
+			var succPath, succSegments, succ, ok = findV3Package(lockfile.Packages, rPath, succName)
 			if !ok {
 				continue
 			}
@@ -109,14 +124,24 @@ func _visitV3[T any](lockfile *v3Lockfile, pred *v3Package, rPath []string, path
 				}
 				pruneSet[succPath] = struct{}{}
 			}
-			handler(theValue, predV, succV, isDev, doNext)
+			handler(theValue, predV, succV, succ.Dev, doNext)
 			delete(pathVisited, succPath)
 		}
 	}
-	traversalDependencies(false, pred.Dependencies)
-	traversalDependencies(false, pred.OptionalDependencies)
-	traversalDependencies(false, pred.PeerDependencies)
-	traversalDependencies(true, pred.DevDependencies)
+	traversalDependencies(pred.Dependencies)
+	traversalDependencies(pred.OptionalDependencies)
+	traversalDependencies(pred.PeerDependencies)
+	traversalDependencies(pred.DevDependencies)
+}
+
+func findV3Package(packages map[string]v3Package, rPath []string, name string) (key string, segments []string, pkg v3Package, ok bool) {
+	key, segments, pkg, ok = npmFindCorrectPair(packages, rPath, name)
+	if ok && pkg.Link {
+		key = pkg.Resolved
+		pkg, ok = packages[key]
+		segments = strings.Split(key, "/")
+	}
+	return
 }
 
 func npmFindCorrectPair[U any](m map[string]U, rp []string, name string) (key string, segments []string, value U, ok bool) {
