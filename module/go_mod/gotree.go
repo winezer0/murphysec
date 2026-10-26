@@ -15,6 +15,7 @@ import (
 	"github.com/Masterminds/semver"
 	"github.com/murphysecurity/murphysec/infra/logctx"
 	"github.com/murphysecurity/murphysec/model"
+	"github.com/murphysecurity/murphysec/scanerr"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 	"golang.org/x/mod/modfile"
@@ -336,7 +337,6 @@ func ParseDependencyLine(line string) (string, string, error) {
 func baseScan(ctx context.Context) error {
 	task := model.UseInspectionTask(ctx)
 	logger := logctx.Use(ctx)
-	var dependencies []model.DependencyItem
 	scanMod := func(path string) error {
 		var indirectMp = make(map[string]bool)
 		fileTxt := ""
@@ -365,15 +365,43 @@ func baseScan(ctx context.Context) error {
 			return err
 		}
 		modName := file.Module.Mod.Path
+		// replace 决定最终参与编译的模块路径与版本。忽略它会把 require 里的
+		// 版本当成实际版本上报：本工程 golang.org/x/sys 写着 v0.6.0，replace 到
+		// v0.0.0-20210112080510-489259a85091，报 v0.6.0 就会漏掉 CVE-2022-29526。
+		var replaces = newReplaceTable(file)
+		var excluded = excludedVersions(file)
+		var dependencies []model.DependencyItem
+		var seen = make(map[string]struct{})
 		for _, req := range file.Require {
+			name, version, replaced := replaces.apply(req.Mod.Path, req.Mod.Version)
+			if replaced {
+				logger.Info("go.mod replace applied",
+					zap.String("from", req.Mod.Path+"@"+req.Mod.Version),
+					zap.String("to", name+"@"+version))
+			}
+			// exclude 只是「这个版本不要用」，静态解析不重算 MVS，拿不到应该
+			// 替代它的版本。保留条目并记告警，好过静默删掉一个组件。
+			if _, hit := excluded[name+"@"+version]; hit {
+				scanerr.Add(ctx, scanerr.Param{
+					Kind:    scanerr.KindGoModExcludeHit,
+					Content: name + "@" + version,
+				})
+			}
+			var key = name + "@" + version
+			if _, dup := seen[key]; dup {
+				continue
+			}
+			seen[key] = struct{}{}
+			// 直接/间接看的是 go.mod 里那条注释，跟着原始路径走：replace 之后
+			// 改了模块名，注释仍挂在旧名字上。
 			isDirectDependency := model.DependencyRelationDirect
 			if _, ok := indirectMp[req.Mod.Path]; ok {
 				isDirectDependency = model.DependencyRelationTransitive
 			}
 			dependencies = append(dependencies, model.DependencyItem{
 				Component: model.Component{
-					CompName:    req.Mod.Path,
-					CompVersion: req.Mod.Version,
+					CompName:    name,
+					CompVersion: version,
 					EcoRepo:     EcoRepo,
 				},
 				DependencyRelation: isDirectDependency,
