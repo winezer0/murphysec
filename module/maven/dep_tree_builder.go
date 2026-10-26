@@ -89,9 +89,24 @@ outer:
 			logger.Warn("Resolve dependency failed", zap.Error(e), zap.Any("coordinate", cur.Coordinate))
 			continue
 		}
+		isRoot := cur == r
 		dm := newDependencyManagementMap(cur.DependencyManagement, pom.ListDependencyManagements())
 		for _, dep := range pom.ListDependencies() {
 			if cur.Exclusion.Has(dep.GroupID, dep.ArtifactID) {
+				continue
+			}
+			// A test/provided/system/optional dependency declared by a library
+			// never reaches consumers of that library, so it is not part of
+			// this project's dependency graph. Dropping it here is not an
+			// optimisation: if it is added as a leaf it gets reported as if
+			// the scanned project depended on it, which is how log4j-core's
+			// own junit/mockito/wiremock ended up in every report.
+			//
+			// The scanned project's own declarations are kept, because they
+			// really are its dependencies and `mvn dependency:tree` lists them.
+			devOnly := dep.Optional == "true" ||
+				dep.Scope == "test" || dep.Scope == "provided" || dep.Scope == "system"
+			if !isRoot && devOnly {
 				continue
 			}
 			depCoordinate := Coordinate{GroupId: dep.GroupID, ArtifactId: dep.ArtifactID}
@@ -116,7 +131,15 @@ outer:
 				Scope:                dep.Scope,
 			}
 			cur.Children = append(cur.Children, child)
-			if dep.Optional == "true" || (dep.Scope != "" && dep.Scope != "compile") {
+			// A dev-only edge does not propagate: Maven turns everything below
+			// a test dependency into test scope as well, so there is nothing
+			// to gain by walking further.
+			//
+			// Note the condition is an explicit scope list rather than
+			// `dep.Scope != "compile"`. The latter also excluded `runtime`,
+			// which does propagate — that silently dropped every transitive
+			// dependency of a runtime-scoped dependency.
+			if devOnly {
 				continue
 			}
 			q.PushBack(child)
