@@ -123,3 +123,12 @@ func TestProcessLockfileV3_PeerDepsAndAliasNames(t *testing.T) {
 	assert.Equal(t, "5.26.5", got["undici-types"])
 	assert.Equal(t, "7.0.0", got["wrap-ansi-cjs"])
 }
+
+func TestProcessLockfileV3_IncludesWorkspaceDependencies(t *testing.T) {
+	lock := []byte(`{"name":"mono","lockfileVersion":3,"packages":{"":{"name":"mono","workspaces":["packages/*"]},"packages/app":{"name":"app","version":"1.0.0","dependencies":{"lodash":"4.17.21"}},"node_modules/lodash":{"version":"4.17.21"}}}`)
+	parsed, err := processLockfileV3(lock)
+	require.NoError(t, err)
+	require.Len(t, parsed.Dependencies, 1)
+	assert.Equal(t, "lodash", parsed.Dependencies[0].CompName)
+	assert.Equal(t, "4.17.21", parsed.Dependencies[0].CompVersion)
+}

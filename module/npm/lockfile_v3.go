@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/murphysecurity/murphysec/model"
 	"github.com/murphysecurity/murphysec/utils"
+	"sort"
 	"strings"
 )
 
@@ -47,6 +48,22 @@ func processLockfileV3(data []byte) (r *model.DependencyItem, e error) {
 	}
 	var rootNode model.DependencyItem
 	_visitV3[*model.DependencyItem](&lockfile, nil, nil, make(map[string]struct{}), &rootNode, handler, make(map[string]struct{}))
+	// The root importer does not contain dependencies declared by npm
+	// workspace members. Include each workspace importer in the dependency
+	// graph so a monorepo scan does not silently omit member dependencies.
+	workspacePaths := make([]string, 0, len(lockfile.Packages))
+	for packagePath := range lockfile.Packages {
+		if packagePath == "" || strings.Contains("/"+packagePath+"/", "/node_modules/") {
+			continue
+		}
+		workspacePaths = append(workspacePaths, packagePath)
+	}
+	sort.Strings(workspacePaths)
+	for _, packagePath := range workspacePaths {
+		workspace := lockfile.Packages[packagePath]
+		segments := strings.Split(packagePath, "/")
+		_visitV3[*model.DependencyItem](&lockfile, &workspace, segments, make(map[string]struct{}), &rootNode, handler, make(map[string]struct{}))
+	}
 	rootNode.CompName = lockfile.Name
 	rootNode.CompVersion = lockfile.Version
 	for i := range rootNode.Dependencies {

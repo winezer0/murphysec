@@ -47,7 +47,10 @@ func getGlobPath(ctx context.Context, dir string, mp map[string]bool) error {
 }
 func skipWorkspaceDirectory(ctx context.Context, dir string) bool {
 	mp := make(map[string]bool)
-	if err := getGlobPath(ctx, dir, mp); err != nil {
+	// Only ancestors can declare that dir is a workspace member. Including
+	// dir itself would classify a monorepo root as a member of its own
+	// workspace glob and skip the root scan.
+	if err := getGlobPath(ctx, filepath.Dir(dir), mp); err != nil {
 		return false
 	}
 	for k := range mp {
