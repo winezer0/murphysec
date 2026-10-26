@@ -4,6 +4,7 @@ import (
 	"context"
 	list "github.com/bahlo/generic-list-go"
 	"github.com/murphysecurity/murphysec/infra/logctx"
+	"github.com/murphysecurity/murphysec/scanerr"
 	"go.uber.org/zap"
 	"path/filepath"
 	"strings"
@@ -34,6 +35,10 @@ func ReadLocalProject(ctx context.Context, dir string) ([]*UnresolvedPom, error)
 		pom, e := readPomFile(ctx, pomPath)
 		if e != nil {
 			logger.Warn("Read pom failed", zap.String("path", current), zap.Error(e))
+			scanerr.Add(ctx, scanerr.Param{
+				Kind:    scanerr.KindMavenProfileResolution,
+				Content: "Could not parse Maven POM " + pomPath + ": " + e.Error(),
+			})
 			continue
 		}
 

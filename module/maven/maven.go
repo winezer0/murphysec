@@ -84,6 +84,7 @@ func ScanMavenProject(ctx context.Context, task *model.InspectionTask) ([]model.
 			deps, e = BackupResolve(ctx, dir)
 			if e != nil {
 				log.Error("Use backup resolver failed", zap.Error(e))
+				scanerr.Add(ctx, scanerr.Param{Kind: scanerr.KindMavenProfileResolution, Content: e.Error()})
 			}
 		}
 	}

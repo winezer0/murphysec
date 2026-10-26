@@ -149,12 +149,25 @@ func (r *resolveContext) resolveInheritance(ctx context.Context, builder *pomBui
 
 		// merge property
 		builder.properties.PutMap(project.Properties.Entries)
+		profiles := activeMavenProfiles(ctx, project, pom.Path)
+		for _, profile := range project.Profiles {
+			reportUnsupportedProfileActivation(ctx, pom.Path, profile)
+		}
+		for _, profile := range profiles {
+			builder.properties.PutMap(profile.Properties.Entries)
+		}
 
 		// merge dependency management
 		builder.depms.mergeAll(project.DependencyManagement.Dependencies, false, false)
+		for _, profile := range profiles {
+			builder.depms.mergeAll(profile.DependencyManagement.Dependencies, true, false)
+		}
 
 		// merge dependencies
 		builder.deps.mergeAll(project.Dependencies, true, false)
+		for _, profile := range profiles {
+			builder.deps.mergeAll(profile.Dependencies, true, false)
+		}
 	}
 
 	// merge ${project.parent.*}

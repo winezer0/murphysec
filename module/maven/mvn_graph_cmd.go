@@ -45,8 +45,7 @@ func (m *PluginGraphCmd) RunC(ctx context.Context) error {
 	}
 
 	if len(m.Profiles) > 0 {
-		args = append(args, "-P")
-		args = append(args, strings.Join(m.Profiles, ","))
+		args = appendMavenProfileArgs(args, m.Profiles)
 	}
 	c := m.MavenCmdInfo.Command(ctx, args...)
 	c.Dir = m.ScanDir
@@ -95,4 +94,11 @@ func (m *PluginGraphCmd) RunC(ctx context.Context) error {
 	}
 	logger.Info("Mvn graph command exit with no errors")
 	return nil
+}
+
+func appendMavenProfileArgs(args, profiles []string) []string {
+	if len(profiles) == 0 {
+		return args
+	}
+	return append(args, "-P", strings.Join(profiles, ","))
 }

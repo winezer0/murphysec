@@ -5,7 +5,6 @@ import (
 	"github.com/murphysecurity/murphysec/env"
 	"github.com/murphysecurity/murphysec/infra/logctx"
 	"github.com/murphysecurity/murphysec/scanerr"
-	"github.com/vifraa/gopom"
 	"go.uber.org/zap"
 	"io/fs"
 	"path/filepath"
@@ -16,7 +15,9 @@ func ScanDepsByPluginCommand(ctx context.Context, projectDir string, mvnCmdInfo 
 	var logger = logctx.Use(ctx)
 	var profiles, e = findPomProfiles(ctx, filepath.Join(projectDir, "pom.xml"))
 	if e != nil {
-		logger.Warn("Error during find pom profiles", zap.Error(e))
+		logger.Warn("Error during find project profiles", zap.Error(e))
+		scanerr.Add(ctx, scanerr.Param{Kind: scanerr.KindMavenProfileResolution, Content: e.Error()})
+		return nil, e
 	} else {
 		logger.Sugar().Infof("Found %d profiles", len(profiles))
 	}
@@ -81,15 +82,4 @@ func collectPluginResultFile(ctx context.Context, projectDir string) (*DepsMap, 
 		rs.put(tree.Coordinate, tree.Children, filepath.Join(relPath, "pom.xml"))
 	}
 	return rs, nil
-}
-
-func findPomProfiles(ctx context.Context, pomPath string) (profiles []string, err error) {
-	project, e := gopom.Parse(pomPath)
-	if e != nil {
-		return nil, e
-	}
-	for _, profile := range project.Profiles {
-		profiles = append(profiles, profile.ID)
-	}
-	return
 }
