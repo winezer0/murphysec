@@ -1,6 +1,6 @@
 module github.com/murphysecurity/murphysec
 
-go 1.24.0
+go 1.25
 
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7
@@ -15,7 +15,7 @@ require (
 	github.com/iseki0/machineid v0.0.0-20240820072516-35aa9673a496
 	github.com/iseki0/osname v0.0.0-20250904122211-abb38091bd0b
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99
-	github.com/klauspost/pgzip v1.2.6
+	github.com/klauspost/pgzip v1.3.0
 	github.com/magiconair/properties v1.8.7
 	github.com/mattn/go-isatty v0.0.20
 	github.com/mitchellh/go-homedir v1.1.0
@@ -67,7 +67,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
-	github.com/klauspost/compress v1.17.9 // indirect
+	github.com/klauspost/compress v1.20.3 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
