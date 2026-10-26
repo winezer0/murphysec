@@ -106,7 +106,8 @@ func DfCmd() *cobra.Command {
 	c.Flags().BoolVar(&onlyTaskId, "only-task-id", false, "print task id after task created, the scan result will not be printed")
 	c.Flags().StringArrayVar(&projectTagNames, "project-tag", make([]string, 0), "specify the tag of the project")
 	c.Flags().StringVar(&sbomOutputConfig, "sbom-output", "-", "Specify the SBOM output file path, use \"-\" to output to stdout")
-	c.Flags().Var(&sbomOutputType, "sbom-format", "(Required) specify the SBOM format, currently supports: msdx1.1+json, spdx-json")
+	c.Flags().Var(&sbomOutputType, "sbom-format", "(Required for SBOM output) format to write: msdx1.1+json or spdx-json. "+
+		"Passing this flag also runs offline: no API call, no token required")
 	c.Flags().BoolVar(&excludeDevDeps, "exclude-dev", false, "omit dev/test/provided dependencies from the SBOM")
 	c.Flags().BoolVar(&directOnlyDeps, "direct-only", false, "omit transitive dependencies from the SBOM")
 	c.Flags().StringVar(&webhookAddr, "webhook-addr", "", "specify the webhook address")
@@ -132,7 +133,8 @@ func EnvCmd() *cobra.Command {
 	c.Flags().BoolVar(&onlyTaskId, "only-task-id", false, "print task id after task created, the scan result will not be printed")
 	c.Flags().StringArrayVar(&projectTagNames, "project-tag", make([]string, 0), "specify the tag of the project")
 	c.Flags().StringVar(&sbomOutputConfig, "sbom-output", "-", "Specify the SBOM output file path, use \"-\" to output to stdout")
-	c.Flags().Var(&sbomOutputType, "sbom-format", "(Required) specify the SBOM format, currently supports: msdx1.1+json, spdx-json")
+	c.Flags().Var(&sbomOutputType, "sbom-format", "(Required for SBOM output) format to write: msdx1.1+json or spdx-json. "+
+		"Passing this flag also runs offline: no API call, no token required")
 	c.Flags().BoolVar(&excludeDevDeps, "exclude-dev", false, "omit dev/test/provided dependencies from the SBOM")
 	c.Flags().BoolVar(&directOnlyDeps, "direct-only", false, "omit transitive dependencies from the SBOM")
 	c.Flags().StringVar(&webhookAddr, "webhook-addr", "", "specify the webhook address")
@@ -232,6 +234,9 @@ func scanRun(cmd *cobra.Command, args []string) {
 func envScanRun(cmd *cobra.Command, args []string) {
 	var ctx = context.TODO()
 	ctx = scanerr.WithCtx(ctx)
+	if !requireSBOMFormat(cmd) {
+		return
+	}
 	if sbomOutputType.Valid {
 		ctx = ui.With(ctx, ui.None)
 	} else if jsonOutput {
@@ -286,9 +291,29 @@ func envScanRun(cmd *cobra.Command, args []string) {
 	}
 }
 
+// requireSBOMFormat reports whether the SBOM output flags are consistent.
+//
+// --sbom-format is what selects the offline SBOM-only path; it also switches
+// the run away from the API. Asking for an output file without it therefore
+// falls through to the online path, where the run dies on a missing token and
+// the actual mistake (a forgotten flag) stays hidden. Fail early instead.
+func requireSBOMFormat(cmd *cobra.Command) bool {
+	if sbomOutputType.Valid || !cmd.Flags().Changed("sbom-output") {
+		return true
+	}
+	fmt.Fprintf(os.Stderr,
+		"error: --sbom-output requires --sbom-format (supported: %s, %s)\n",
+		common.SBOMFormatMSDX, common.SBOMFormatSPDX)
+	exitcode.Set(1)
+	return false
+}
+
 func dfScanRun(cmd *cobra.Command, args []string) {
 	var ctx = context.TODO()
 	ctx = scanerr.WithCtx(ctx)
+	if !requireSBOMFormat(cmd) {
+		return
+	}
 	if sbomOutputType.Valid {
 		ctx = ui.With(ctx, ui.None)
 	} else if jsonOutput {

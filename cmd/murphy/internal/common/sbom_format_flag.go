@@ -30,8 +30,10 @@ type SBOMFormatFlag struct {
 }
 
 func (t *SBOMFormatFlag) String() string {
+	// Returning "" when unset keeps pflag from advertising a bogus
+	// "(default invalid)" in the help output.
 	if !t.Valid {
-		return "invalid"
+		return ""
 	}
 	if t.Format == "" {
 		return SBOMFormatMSDX
