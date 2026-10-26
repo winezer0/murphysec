@@ -62,7 +62,15 @@ func (Inspector) SupportFeature(feature model.InspectorFeature) bool {
 	return false
 }
 
+// EcoRepo identifies the ecosystem renv packages belong to. renv manages R
+// libraries and installs them from CRAN, so the ecosystem is "cran".
+//
+// This used to say "spm" (Swift Package Manager), which meant two things went
+// wrong at once: no purl could be generated (spm was not in the purl table),
+// and any purl that had been generated would have pointed OSV at the Swift
+// vulnerability database. R projects were reported with no vulnerabilities at
+// all because the packages were dropped as unidentifiable.
 var EcoRepo = model.EcoRepo{
-	Ecosystem:  "spm",
+	Ecosystem:  "cran",
 	Repository: "",
 }
