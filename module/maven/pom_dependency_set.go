@@ -47,7 +47,13 @@ func (p *pomDependencySet) mergeAll(b []gopom.Dependency, override bool, ignoreI
 }
 
 func (p *pomDependencySet) mergeItem(b gopom.Dependency, override bool, ignoreIfNotExists bool) {
-	k := b.GroupID + ":" + b.ArtifactID
+	// The identity of a dependency is groupId:artifactId:type:classifier, not
+	// just the first two segments. A pom may declare the same artifact twice
+	// with different types — log4j-core for instance declares log4j-api once as
+	// a jar (compile) and once as a test-jar (test). Merging them on
+	// group+artifact lets the test-jar's scope overwrite the jar's compile
+	// scope, which later marks a real dependency as dev-only.
+	k := b.GroupID + ":" + b.ArtifactID + ":" + b.Type + ":" + b.Classifier
 	var a, ok = p.m.Get(k)
 	if !ok && ignoreIfNotExists {
 		return
