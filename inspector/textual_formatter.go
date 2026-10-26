@@ -115,7 +115,21 @@ func BuildSpdxWithNotes(task *model.ScanTask, notes []string) []byte {
 		packages = append(packages, m)
 	}
 	var relationships = make([]any, 0)
-	for ints := range g.edges {
+	// g.edges is a map, so iterating it directly emitted the relationships in a
+	// different order on every run. Two SBOMs of the same, unchanged project
+	// then differed only by that order, which turns any diff-based drift check
+	// into noise. Sort by (from, to) to keep the document stable.
+	var edges = make([][2]int, 0, len(g.edges))
+	for edge := range g.edges {
+		edges = append(edges, edge)
+	}
+	sort.Slice(edges, func(i, j int) bool {
+		if edges[i][0] != edges[j][0] {
+			return edges[i][0] < edges[j][0]
+		}
+		return edges[i][1] < edges[j][1]
+	})
+	for _, ints := range edges {
 		var from = ints[0]
 		var to = ints[1]
 		relationships = append(relationships, map[string]any{
