@@ -1,96 +1,173 @@
-name: Build
+name: Build And Release
 
 on:
   push:
     tags:
-      - v*
+      - 'v*'
     branches:
       - master
-      - v*
-      - dev*
-      - ci*
-      - feat*
-      - fix*
-      - refactor*
-      - 'refactor/*'
+      - 'v*'
+      - 'dev*'
+      - 'ci*'
+      - 'feat*'
+      - 'fix*'
+      - 'refactor*'
+      - 'refactor/**'
     paths:
-      - "**/*.go"
-      - "go.mod"
-      - "go.sum"
-      - ".github/workflows/*.yml"
+      - '**/*.go'
+      - go.mod
+      - go.sum
+      - .github/workflows/*.yml
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version to publish (for example v1.2.3)
+        required: true
+        default: v0.0.1
+        type: string
+
+permissions:
+  contents: read
+
 jobs:
+  resolve-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      publish: ${{ steps.resolve.outputs.publish }}
+    steps:
+      - name: Resolve release version
+        id: resolve
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          version=''
+          publish=false
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            version="$INPUT_VERSION"
+            publish=true
+          elif [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            version="$GITHUB_REF_NAME"
+            publish=true
+          fi
+
+          if [[ "$publish" == "true" && ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release version: $version" >&2
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: resolve-version
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        goos: [ linux, darwin, windows ]
-        goarch: [ amd64, arm64 ]
-    env:
-      GOOS: ${{ matrix.goos }}
-      GOARCH: ${{ matrix.goarch }}
-      CGO_ENABLED: '0'
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v5
         with:
-          go-version-file: 'go.mod'
+          go-version-file: go.mod
           cache: true
 
-      - uses: denoland/setup-deno@v1
+      - uses: denoland/setup-deno@v2
         with:
           deno-version: v1.x
 
-      - name: Download dependencies
+      - name: Download Go modules
         run: go mod download
 
-      - name: Build without tag
-        if: "!startsWith(github.ref, 'refs/tags/v')"
-        run: go build -v -ldflags "-s -w -buildid=" -trimpath -o out/murphysec-${{ matrix.goos }}-${{ matrix.goarch }} .
-
-      - name: Build with tag
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: go build -v -ldflags "-s -w -X github.com/murphysecurity/murphysec/infra/buildinfo.version=$GITHUB_REF_NAME -buildid=" -trimpath -o out/murphysec-${{ matrix.goos }}-${{ matrix.goarch }} .
-
-      - name: Rename for Windows
-        if: matrix.goos == 'windows'
-        run: mv out/murphysec-${{ matrix.goos }}-${{ matrix.goarch }} out/murphysec-${{ matrix.goos }}-${{ matrix.goarch }}.exe
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: murphysec-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: out/*
-
-
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs:
-      - build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-
-      - name: Show files
-        run: |
-          pwd
-          find
-
-      - name: Calc hash
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+          RELEASE_VERSION: ${{ needs.resolve-version.outputs.version }}
+        shell: bash
         run: |
           mkdir -p out
-          cp ./murphysec-linux-amd64/murphysec-linux-amd64 ./out/
-          cp ./murphysec-windows-amd64/murphysec-windows-amd64.exe ./out/
-          cp ./murphysec-windows-arm64/murphysec-windows-arm64.exe ./out/
-          cp ./murphysec-darwin-amd64/murphysec-darwin-amd64 ./out/
-          cp ./murphysec-darwin-arm64/murphysec-darwin-arm64 ./out
-          cp ./murphysec-linux-arm64/murphysec-linux-arm64 ./out
-          cd out
-          sha256sum * > sha256sum
+          if [[ -n "$RELEASE_VERSION" ]]; then
+            go build -trimpath \
+              -ldflags "-s -w -X github.com/murphysecurity/murphysec/infra/buildinfo.version=${RELEASE_VERSION} -buildid=" \
+              -o "out/murphysec-${GOOS}-${GOARCH}" .
+          else
+            go build -trimpath \
+              -ldflags "-s -w -buildid=" \
+              -o "out/murphysec-${GOOS}-${GOARCH}" .
+          fi
 
-      - name: Release
-        uses: softprops/action-gh-release@v1
+      - name: Add Windows executable extension
+        if: matrix.goos == 'windows'
+        run: mv "out/murphysec-${{ matrix.goos }}-${{ matrix.goarch }}" "out/murphysec-${{ matrix.goos }}-${{ matrix.goarch }}.exe"
+
+      - uses: actions/upload-artifact@v4
         with:
-          files: out/*
-          draft: true
+          name: murphysec-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: out/murphysec-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    if: needs.resolve-version.outputs.publish == 'true'
+    needs: [resolve-version, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create checksums
+        working-directory: release-assets
+        run: sha256sum * > SHA256SUMS
+
+      - name: Create release and upload builds
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.resolve-version.outputs.version }}
+          RELEASE_TARGET: ${{ github.sha }}
+        shell: bash
+        run: |
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            release_args=(--generate-notes)
+            if [[ "$RELEASE_TAG" == *-* ]]; then
+              release_args+=(--prerelease)
+            fi
+            gh release create "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$RELEASE_TARGET" \
+              --title "$RELEASE_TAG" \
+              "${release_args[@]}"
+          fi
+
+          mapfile -d '' assets < <(find release-assets -type f -print0)
+          if [[ ${#assets[@]} -eq 0 ]]; then
+            echo 'No release assets were downloaded' >&2
+            exit 1
+          fi
+          gh release upload "$RELEASE_TAG" "${assets[@]}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+          gh release edit "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft=false
