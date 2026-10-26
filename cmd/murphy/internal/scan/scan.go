@@ -145,6 +145,11 @@ func postScanHook(ctx context.Context) (a any, e error) {
 func scanSbomOnly(ctx context.Context, dir string) {
 	var task = &model.ScanTask{
 		ProjectPath: dir,
+		// --no-build has to reach the inspectors: maven, go_mod and nuget all
+		// consult IsNoBuild before shelling out. Without this the flag was
+		// accepted and ignored on the SBOM path, so an air-gapped run still
+		// tried to build (and took ~12x longer when mvn was on PATH).
+		IsNoBuild: noBuild,
 	}
 	ctx = model.WithScanTask(ctx, task)
 	_ = inspector.ManagedInspect(ctx)
