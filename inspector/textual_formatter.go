@@ -61,7 +61,7 @@ func BuildSpdx(task *model.ScanTask) []byte {
 	for i, node := range g.nodes {
 		var m = map[string]any{
 			"SPDXID":       fmt.Sprint("SPDXRef-package-", i),
-			"name":         node.CompName,
+			"name":         componentName(node),
 			"versionInfo":  node.CompVersion,
 			"fileAnalyzed": false,
 		}
@@ -217,4 +217,16 @@ func escapePURLPath(s string) string {
 		parts[i] = url.PathEscape(parts[i])
 	}
 	return strings.Join(parts, "/")
+}
+
+// componentName is the package name as the ecosystem spells it. Maven carries
+// "groupId:artifactId" in CompName; SPDX wants the name on its own, with the
+// group expressed through the purl namespace instead.
+func componentName(node model.Component) string {
+	if strings.EqualFold(node.Ecosystem, "maven") {
+		if _, artifact, found := strings.Cut(node.CompName, ":"); found {
+			return artifact
+		}
+	}
+	return node.CompName
 }

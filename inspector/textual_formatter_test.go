@@ -82,3 +82,20 @@ func TestComponentPURL(t *testing.T) {
 		})
 	}
 }
+
+func TestComponentName(t *testing.T) {
+	cases := []struct {
+		component model.Component
+		want      string
+	}{
+		{model.Component{CompName: "com.google.guava:guava", EcoRepo: model.EcoRepo{Ecosystem: "maven"}}, "guava"},
+		{model.Component{CompName: "guava", EcoRepo: model.EcoRepo{Ecosystem: "maven"}}, "guava"},
+		{model.Component{CompName: "lodash", EcoRepo: model.EcoRepo{Ecosystem: "npm"}}, "lodash"},
+		{model.Component{CompName: "@angular/core", EcoRepo: model.EcoRepo{Ecosystem: "npm"}}, "@angular/core"},
+	}
+	for _, c := range cases {
+		if got := componentName(c.component); got != c.want {
+			t.Errorf("componentName(%+v) = %q, want %q", c.component, got, c.want)
+		}
+	}
+}
