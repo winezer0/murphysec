@@ -106,7 +106,7 @@ func DfCmd() *cobra.Command {
 	c.Flags().BoolVar(&onlyTaskId, "only-task-id", false, "print task id after task created, the scan result will not be printed")
 	c.Flags().StringArrayVar(&projectTagNames, "project-tag", make([]string, 0), "specify the tag of the project")
 	c.Flags().StringVar(&sbomOutputConfig, "sbom-output", "-", "Specify the SBOM output file path, use \"-\" to output to stdout")
-	c.Flags().Var(&sbomOutputType, "sbom-format", "(Required) specify the SBOM format, currently supports: msdx1.1+json")
+	c.Flags().Var(&sbomOutputType, "sbom-format", "(Required) specify the SBOM format, currently supports: msdx1.1+json, spdx-json")
 	c.Flags().StringVar(&webhookAddr, "webhook-addr", "", "specify the webhook address")
 	c.Flags().Var(&webhookMode, "webhook-mode", "specify the webhook mode, currently supports: simple, full(default)")
 	c.Flags().Var(&distribution, "distribution", "specify the distribution, currently supports: external, internal, saas, open_source")
@@ -130,7 +130,7 @@ func EnvCmd() *cobra.Command {
 	c.Flags().BoolVar(&onlyTaskId, "only-task-id", false, "print task id after task created, the scan result will not be printed")
 	c.Flags().StringArrayVar(&projectTagNames, "project-tag", make([]string, 0), "specify the tag of the project")
 	c.Flags().StringVar(&sbomOutputConfig, "sbom-output", "-", "Specify the SBOM output file path, use \"-\" to output to stdout")
-	c.Flags().Var(&sbomOutputType, "sbom-format", "(Required) specify the SBOM format, currently supports: msdx1.1+json")
+	c.Flags().Var(&sbomOutputType, "sbom-format", "(Required) specify the SBOM format, currently supports: msdx1.1+json, spdx-json")
 	c.Flags().StringVar(&webhookAddr, "webhook-addr", "", "specify the webhook address")
 	c.Flags().Var(&webhookMode, "webhook-mode", "specify the webhook mode, currently supports: simple, full(default)")
 	c.Flags().StringVar(&extraData, "extra-data", "", "specify the extra data")
@@ -458,6 +458,19 @@ func doSBOMOnlyPrint(ctx context.Context, task *model.ScanTask) {
 		}()
 	}
 	var bufioWriter = bufio.NewWriter(writer)
+	defer func() {
+		must.M(bufioWriter.Flush())
+	}()
+
+	// SPDX 2.3. Unlike the msdx format it carries a purl per package, which is
+	// what lets osv-scanner (and any other SBOM consumer) identify the package
+	// instead of treating it as unscannable.
+	if sbomOutputType.IsSPDX() {
+		_, e := bufioWriter.Write(inspector.BuildSpdx(task))
+		must.M(e)
+		return
+	}
+
 	var enc = json.NewEncoder(bufioWriter)
 	enc.SetIndent("", "    ")
 	if task.Modules == nil {
@@ -467,5 +480,4 @@ func doSBOMOnlyPrint(ctx context.Context, task *model.ScanTask) {
 		"modules":             task.Modules,
 		"scan_warnings_codes": lo.Uniq(fp.Map(func(it scanerr.Param) string { return it.Kind })(scanerr.GetAll(ctx))),
 	}))
-	must.M(bufioWriter.Flush())
 }
