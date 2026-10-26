@@ -8,10 +8,24 @@ import (
 var Default Config
 var postprocessors []func(context.Context, *Config)
 
+type mavenCommandOverrideKey struct{}
+
+func WithMavenCommandOverride(ctx context.Context, command string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, mavenCommandOverrideKey{}, command)
+}
+
 func Get(ctx context.Context) *Config {
 	var r = mergeConfig(mergeConfig(&Default, getIntellijConfig()), getFromEnv())
 	for _, it := range postprocessors {
 		it(ctx, r)
+	}
+	if ctx != nil {
+		if command, ok := ctx.Value(mavenCommandOverrideKey{}).(string); ok {
+			r.Maven.MavenCommand = command
+		}
 	}
 	return r
 }

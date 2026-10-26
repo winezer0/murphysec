@@ -3,12 +3,15 @@ package inspector
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
 	"github.com/murphysecurity/murphysec/infra/logctx"
 	"github.com/murphysecurity/murphysec/model"
 	"github.com/murphysecurity/murphysec/module"
+	"github.com/murphysecurity/murphysec/scanerr"
 	"github.com/murphysecurity/murphysec/utils"
 	"go.uber.org/zap"
+	"path/filepath"
 	"time"
 )
 
@@ -33,6 +36,7 @@ func ManagedInspect(ctx context.Context) error {
 	logger.Sugar().Infof("Found %d directories", len(scanner.scannedDirs))
 	ctx = setBasePath(ctx, baseDir)
 	// 对扫到的内容，逐个开始检查
+	var inspectErrors []error
 	for idx, it := range scanner.scannedDirs {
 		st := time.Now()
 		// 创建检查任务
@@ -46,6 +50,11 @@ func ManagedInspect(ctx context.Context) error {
 		logger.Sugar().Infof("End: %s, duration: %v", it.String(), time.Since(st))
 		if e != nil {
 			logger.Error("InspectError", zap.Error(e), zap.Any("inspector", it))
+			inspectErrors = append(inspectErrors, fmt.Errorf("%s at %s: %w", it.inspector.String(), it.path, e))
+			scanerr.Add(ctx, scanerr.Param{
+				Kind:    scanerr.KindInspectorFailed,
+				Content: fmt.Sprintf("%s inspector failed for %s; dependency data may be incomplete", it.inspector.String(), filepath.Base(it.path)),
+			})
 		}
 	}
 
@@ -61,5 +70,5 @@ func ManagedInspect(ctx context.Context) error {
 	} else {
 		scanTask.CodeFragments = previews
 	}
-	return nil
+	return errors.Join(inspectErrors...)
 }

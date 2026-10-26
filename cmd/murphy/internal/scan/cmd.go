@@ -55,6 +55,7 @@ var distribution common.DistributionFlag
 var disableWindowsPatchScan bool
 var windowsPatchScanTimeout int
 var webhookToken []string
+var mavenCommand string
 
 func Cmd() *cobra.Command {
 	var c cobra.Command
@@ -84,6 +85,7 @@ func Cmd() *cobra.Command {
 	c.Flags().StringArrayVar(&toolver.Default.Maven.AdditionalArgs, "maven-arg", []string{}, "Append an argument to the Maven command. Can be specified multiple times.")
 	c.Flags().StringVar(&toolver.Default.Maven.JdkVersion, "maven-jdk", "", "specify JDK version for Maven build")
 	c.Flags().StringVar(&toolver.Default.Maven.MavenVersion, "maven-version", "", "specify Maven version for Maven build")
+	c.Flags().StringVar(&mavenCommand, "maven-command", "", "specify the Maven executable path")
 	// 多个入参： murphy scan ./project --webhook-token Authorization=Bearer123 --webhook-token X-Custom-Header=value
 	c.Flags().StringArrayVar(&webhookToken, "webhook-token", make([]string, 0), "specify the webhook token in key=value format. Can be specified multiple times.")
 	return &c
@@ -118,6 +120,7 @@ func DfCmd() *cobra.Command {
 	c.Flags().StringArrayVar(&gradleProjectFilter.ProjectNames, "gradle-project-name", make([]string, 0), "specify the name of the Gradle project")
 	c.Flags().StringArrayVar(&toolver.Default.Maven.AdditionalPrependArgs, "maven-prepend-arg", []string{}, "Prepend an argument to the Maven command. Can be specified multiple times.")
 	c.Flags().StringArrayVar(&toolver.Default.Maven.AdditionalArgs, "maven-arg", []string{}, "Append an argument to the Maven command. Can be specified multiple times.")
+	c.Flags().StringVar(&mavenCommand, "maven-command", "", "specify the Maven executable path")
 	c.Flags().StringArrayVar(&webhookToken, "webhook-token", make([]string, 0), "specify the webhook token in key=value format. Can be specified multiple times.")
 	return &c
 }
@@ -196,8 +199,16 @@ func commonScanPreCheck(ctx context.Context, scanDir string) (string, error) {
 	return scanDir, nil
 }
 
+func withMavenCommandOverride(ctx context.Context, cmd *cobra.Command) context.Context {
+	if cmd != nil && cmd.Flags().Changed("maven-command") {
+		return toolver.WithMavenCommandOverride(ctx, mavenCommand)
+	}
+	return ctx
+}
+
 func scanRun(cmd *cobra.Command, args []string) {
 	var ctx = context.TODO()
+	ctx = withMavenCommandOverride(ctx, cmd)
 	if jsonOutput {
 		ctx = ui.With(ctx, ui.IDEA)
 	} else {
@@ -310,6 +321,7 @@ func requireSBOMFormat(cmd *cobra.Command) bool {
 
 func dfScanRun(cmd *cobra.Command, args []string) {
 	var ctx = context.TODO()
+	ctx = withMavenCommandOverride(ctx, cmd)
 	ctx = scanerr.WithCtx(ctx)
 	if !requireSBOMFormat(cmd) {
 		return
@@ -498,7 +510,7 @@ func doSBOMOnlyPrint(ctx context.Context, task *model.ScanTask) {
 	// what lets osv-scanner (and any other SBOM consumer) identify the package
 	// instead of treating it as unscannable.
 	if sbomOutputType.IsSPDX() {
-		_, e := bufioWriter.Write(inspector.BuildSpdxWithNotes(task, scanWarningCodes(ctx)))
+		_, e := bufioWriter.Write(inspector.BuildSpdxWithNotes(task, scanWarningDetails(ctx)))
 		must.M(e)
 		return
 	}
@@ -520,4 +532,13 @@ func doSBOMOnlyPrint(ctx context.Context, task *model.ScanTask) {
 // dependency list.
 func scanWarningCodes(ctx context.Context) []string {
 	return lo.Uniq(fp.Map(func(it scanerr.Param) string { return it.Kind })(scanerr.GetAll(ctx)))
+}
+
+func scanWarningDetails(ctx context.Context) []string {
+	return lo.Uniq(fp.Map(func(it scanerr.Param) string {
+		if it.Kind != scanerr.KindInspectorFailed || it.Content == "" {
+			return it.Kind
+		}
+		return it.Kind + ": " + it.Content
+	})(scanerr.GetAll(ctx)))
 }

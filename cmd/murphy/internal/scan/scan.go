@@ -19,6 +19,7 @@ import (
 	"github.com/murphysecurity/murphysec/env"
 	"github.com/murphysecurity/murphysec/envinspection"
 	"github.com/murphysecurity/murphysec/gitinfo"
+	"github.com/murphysecurity/murphysec/infra/exitcode"
 	"github.com/murphysecurity/murphysec/infra/logctx"
 	"github.com/murphysecurity/murphysec/infra/ref"
 	"github.com/murphysecurity/murphysec/inspector"
@@ -152,7 +153,10 @@ func scanSbomOnly(ctx context.Context, dir string) {
 		IsNoBuild: noBuild,
 	}
 	ctx = model.WithScanTask(ctx, task)
-	_ = inspector.ManagedInspect(ctx)
+	if e := inspector.ManagedInspect(ctx); e != nil {
+		fmt.Fprintf(os.Stderr, "warning: dependency scan incomplete; writing partial SBOM: %v\n", e)
+		exitcode.Set(1)
+	}
 	doSBOMOnlyPrint(ctx, task)
 }
 
