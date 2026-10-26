@@ -107,6 +107,8 @@ func DfCmd() *cobra.Command {
 	c.Flags().StringArrayVar(&projectTagNames, "project-tag", make([]string, 0), "specify the tag of the project")
 	c.Flags().StringVar(&sbomOutputConfig, "sbom-output", "-", "Specify the SBOM output file path, use \"-\" to output to stdout")
 	c.Flags().Var(&sbomOutputType, "sbom-format", "(Required) specify the SBOM format, currently supports: msdx1.1+json, spdx-json")
+	c.Flags().BoolVar(&excludeDevDeps, "exclude-dev", false, "omit dev/test/provided dependencies from the SBOM")
+	c.Flags().BoolVar(&directOnlyDeps, "direct-only", false, "omit transitive dependencies from the SBOM")
 	c.Flags().StringVar(&webhookAddr, "webhook-addr", "", "specify the webhook address")
 	c.Flags().Var(&webhookMode, "webhook-mode", "specify the webhook mode, currently supports: simple, full(default)")
 	c.Flags().Var(&distribution, "distribution", "specify the distribution, currently supports: external, internal, saas, open_source")
@@ -131,6 +133,8 @@ func EnvCmd() *cobra.Command {
 	c.Flags().StringArrayVar(&projectTagNames, "project-tag", make([]string, 0), "specify the tag of the project")
 	c.Flags().StringVar(&sbomOutputConfig, "sbom-output", "-", "Specify the SBOM output file path, use \"-\" to output to stdout")
 	c.Flags().Var(&sbomOutputType, "sbom-format", "(Required) specify the SBOM format, currently supports: msdx1.1+json, spdx-json")
+	c.Flags().BoolVar(&excludeDevDeps, "exclude-dev", false, "omit dev/test/provided dependencies from the SBOM")
+	c.Flags().BoolVar(&directOnlyDeps, "direct-only", false, "omit transitive dependencies from the SBOM")
 	c.Flags().StringVar(&webhookAddr, "webhook-addr", "", "specify the webhook address")
 	c.Flags().Var(&webhookMode, "webhook-mode", "specify the webhook mode, currently supports: simple, full(default)")
 	c.Flags().StringVar(&extraData, "extra-data", "", "specify the extra data")
@@ -431,6 +435,9 @@ func reportIdeError(ctx context.Context, status model.IDEStatus, e error) {
 }
 
 func doSBOMOnlyPrint(ctx context.Context, task *model.ScanTask) {
+	// Apply the output filters before the tree is flattened, so a filtered
+	// package is absent from both the component list and the relationships.
+	filterModulesForSBOM(task.Modules)
 	for i := range task.Modules {
 		for j := range task.Modules[i].Dependencies {
 			task.Modules[i].Dependencies[j].Postprocess()
