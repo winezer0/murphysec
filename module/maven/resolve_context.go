@@ -3,6 +3,9 @@ package maven
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+
 	"github.com/murphysecurity/murphysec/infra/logctx"
 	"github.com/murphysecurity/murphysec/utils"
 	"github.com/vifraa/gopom"
@@ -121,17 +124,22 @@ func (r *resolveContext) resolveInheritance(ctx context.Context, builder *pomBui
 	var visitedParents = make(map[Coordinate]struct{})
 	var poms []*UnresolvedPom
 	poms = append(poms, builder.pom)
+	// from tracks the pom whose <parent> block describes the next coordinate,
+	// so the relativePath next to that pom can be tried before going to a
+	// repository.
+	var from = builder.pom
 	for coordinate != nil {
 		if _, ok := visitedParents[*coordinate]; ok {
 			break
 		}
 		visitedParents[*coordinate] = struct{}{}
-		parent, e := r.resolver.fetchPom(ctx, *coordinate)
+		parent, e := r.fetchParent(ctx, *coordinate, from)
 		if e != nil {
 			logger.Warn("Fetch parent failed", zap.Any("coordinate", *coordinate), zap.Error(e))
 			break
 		}
 		poms = append(poms, parent)
+		from = parent
 		coordinate = parent.ParentCoordinate()
 	}
 
@@ -214,4 +222,44 @@ func (r *resolvedPomCache) get(coordinate Coordinate) (*Pom, error) {
 		return p, nil
 	}
 	return nil, nil
+}
+
+// fetchParent resolves a parent pom, preferring the local file named by the
+// child's <relativePath> over a repository lookup.
+//
+// Maven resolves a parent from a repository only after the relative path has
+// failed, and the relative path defaults to "../pom.xml" when omitted. Private
+// parent poms that were never published are only reachable this way, so
+// skipping it made every multi-module project with an unpublished parent
+// resolve no properties at all.
+func (r *resolveContext) fetchParent(ctx context.Context, c Coordinate, from *UnresolvedPom) (*UnresolvedPom, error) {
+	if from != nil && from.Path != "" {
+		rel := from.Project.Parent.RelativePath
+		var candidate string
+		if rel == "" {
+			candidate = filepath.Join(filepath.Dir(from.Path), "..", "pom.xml")
+		} else {
+			candidate = filepath.Join(filepath.Dir(from.Path), rel)
+		}
+		// relativePath may point at a directory, in which case Maven looks for
+		// pom.xml inside it.
+		if fi, e := os.Stat(candidate); e == nil {
+			if fi.IsDir() {
+				candidate = filepath.Join(candidate, "pom.xml")
+			}
+			if project, e := readPomFile(ctx, candidate); e == nil {
+				// Guard against a pointing-at-the-wrong-file mistake: a pom
+				// whose artifactId disagrees is not the parent we asked for,
+				// and Maven falls back to the repository in that case.
+				if project.ArtifactID == "" || project.ArtifactID == c.ArtifactId {
+					return &UnresolvedPom{Project: project, Path: candidate}, nil
+				}
+				r.logger.Warn("relativePath points at a different pom, falling back to repository",
+					zap.String("path", candidate),
+					zap.String("want", c.ArtifactId),
+					zap.String("got", project.ArtifactID))
+			}
+		}
+	}
+	return r.resolver.fetchPom(ctx, c)
 }
