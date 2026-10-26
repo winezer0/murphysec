@@ -1,6 +1,8 @@
 package inspector
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/murphysecurity/murphysec/model"
@@ -158,5 +160,31 @@ func TestUnmappedEcosystems(t *testing.T) {
 	// ordinary documents.
 	if ecos, n := unmappedEcosystems(nodes[:2]); n != 0 || ecos != nil {
 		t.Errorf("mapped graph reported %v/%d, want nil/0", ecos, n)
+	}
+}
+
+func TestSpdxReportsPackagesWithoutPURL(t *testing.T) {
+	task := &model.ScanTask{Modules: []model.Module{{Dependencies: []model.DependencyItem{{
+		Component: model.Component{CompName: "@ohos/hypium", CompVersion: "1.0.6", EcoRepo: model.EcoRepo{Ecosystem: "ohpm"}},
+	}}}}}
+	var document struct {
+		Packages    []map[string]any `json:"packages"`
+		Annotations []struct {
+			Comment string `json:"comment"`
+		} `json:"annotations"`
+	}
+	if err := json.Unmarshal(BuildSpdx(task), &document); err != nil {
+		t.Fatal(err)
+	}
+	if len(document.Packages) != 1 {
+		t.Fatalf("got %d packages, want 1", len(document.Packages))
+	}
+	for _, ref := range document.Packages[0]["externalRefs"].([]any) {
+		if ref.(map[string]any)["referenceType"] == "purl" {
+			t.Fatal("unmapped ecosystem unexpectedly received a purl")
+		}
+	}
+	if len(document.Annotations) != 1 || !strings.Contains(document.Annotations[0].Comment, "no package-url type") || !strings.Contains(document.Annotations[0].Comment, "vulnerabilities cannot be reported") {
+		t.Fatalf("missing consumer warning annotation: %+v", document.Annotations)
 	}
 }
