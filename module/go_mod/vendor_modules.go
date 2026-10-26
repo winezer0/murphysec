@@ -5,13 +5,21 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"golang.org/x/mod/modfile"
 )
 
 // vendorModule 是 vendor/modules.txt 里的一条模块记录。
 type vendorModule struct {
-	Path     string
-	Version  string
-	Explicit bool // 主模块直接 require（文件里标记为 `## explicit`）
+	Path string
+	// Version 是实际参与编译的版本：replace 已经在这里生效。
+	Version string
+	// Explicit 表示该模块出现在主模块 go.mod 的 require 列表里。
+	//
+	// 注意它不等于「业务上的直接依赖」：Go 1.17 的 go.mod 会把间接依赖也写成
+	// require（带 `// indirect` 注释），所以一个 tidy 过的 vendor 工程里每个模块
+	// 都是 explicit。判断直接/间接要看 go.mod 的注释，见 goModRelations。
+	Explicit bool
 }
 
 // parseVendorModules 解析 vendor/modules.txt。
@@ -96,4 +104,30 @@ func readVendorModules(path string) (mods []vendorModule, ok bool) {
 		return nil, false
 	}
 	return mods, true
+}
+
+// goModRelations 从 go.mod 读出「哪些模块被主模块直接 import」。
+//
+// 返回值以 replace 生效后的模块路径为 key，值表示是否直接依赖，与
+// vendor/modules.txt 里的路径对齐。
+//
+// 之所以不能直接用 modules.txt 的 `## explicit`：Go 1.17 的 go.mod 会把间接
+// 依赖也写成 require 并在行尾标 `// indirect`，于是 vendor 里每个模块都是
+// explicit。注释才是「业务上直接」的唯一来源。
+func goModRelations(path string) map[string]bool {
+	var data, e = os.ReadFile(path)
+	if e != nil {
+		return nil
+	}
+	var f, err = modfile.Parse(path, data, nil)
+	if err != nil {
+		return nil
+	}
+	var tbl = newReplaceTable(f)
+	var out = make(map[string]bool, len(f.Require))
+	for _, req := range f.Require {
+		var name, _, _ = tbl.apply(req.Mod.Path, req.Mod.Version)
+		out[name] = !req.Indirect
+	}
+	return out
 }

@@ -370,7 +370,7 @@ func baseScan(ctx context.Context) error {
 		// v0.0.0-20210112080510-489259a85091，报 v0.6.0 就会漏掉 CVE-2022-29526。
 		var replaces = newReplaceTable(file)
 		var excluded = excludedVersions(file)
-		var dependencies []model.DependencyItem
+		var directs, indirects []model.DependencyItem
 		var seen = make(map[string]struct{})
 		for _, req := range file.Require {
 			name, version, replaced := replaces.apply(req.Mod.Path, req.Mod.Version)
@@ -398,7 +398,7 @@ func baseScan(ctx context.Context) error {
 			if _, ok := indirectMp[req.Mod.Path]; ok {
 				isDirectDependency = model.DependencyRelationTransitive
 			}
-			dependencies = append(dependencies, model.DependencyItem{
+			var item = model.DependencyItem{
 				Component: model.Component{
 					CompName:    name,
 					CompVersion: version,
@@ -406,13 +406,18 @@ func baseScan(ctx context.Context) error {
 				},
 				DependencyRelation: isDirectDependency,
 				IsOnline:           model.IsOnline{Value: true, Valid: true},
-			})
+			}
+			if isDirectDependency == model.DependencyRelationDirect {
+				directs = append(directs, item)
+			} else {
+				indirects = append(indirects, item)
+			}
 		}
 		m := model.Module{
 			PackageManager: "gomod",
 			ModulePath:     filepath.Join(task.Dir(), "go.mod"),
 			ModuleName:     modName,
-			Dependencies:   dependencies,
+			Dependencies:   buildModuleGraph(modName, directs, indirects),
 		}
 		task.AddModule(m)
 		return nil
