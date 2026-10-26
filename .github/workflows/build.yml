@@ -1,0 +1,96 @@
+name: Build
+
+on:
+  push:
+    tags:
+      - v*
+    branches:
+      - master
+      - v*
+      - dev*
+      - ci*
+      - feat*
+      - fix*
+      - refactor*
+      - 'refactor/*'
+    paths:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/*.yml"
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [ linux, darwin, windows ]
+        goarch: [ amd64, arm64 ]
+    env:
+      GOOS: ${{ matrix.goos }}
+      GOARCH: ${{ matrix.goarch }}
+      CGO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build without tag
+        if: "!startsWith(github.ref, 'refs/tags/v')"
+        run: go build -v -ldflags "-s -w -buildid=" -trimpath -o out/murphysec-${{ matrix.goos }}-${{ matrix.goarch }} .
+
+      - name: Build with tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: go build -v -ldflags "-s -w -X github.com/murphysecurity/murphysec/infra/buildinfo.version=$GITHUB_REF_NAME -buildid=" -trimpath -o out/murphysec-${{ matrix.goos }}-${{ matrix.goarch }} .
+
+      - name: Rename for Windows
+        if: matrix.goos == 'windows'
+        run: mv out/murphysec-${{ matrix.goos }}-${{ matrix.goarch }} out/murphysec-${{ matrix.goos }}-${{ matrix.goarch }}.exe
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: murphysec-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: out/*
+
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+
+      - name: Show files
+        run: |
+          pwd
+          find
+
+      - name: Calc hash
+        run: |
+          mkdir -p out
+          cp ./murphysec-linux-amd64/murphysec-linux-amd64 ./out/
+          cp ./murphysec-windows-amd64/murphysec-windows-amd64.exe ./out/
+          cp ./murphysec-windows-arm64/murphysec-windows-arm64.exe ./out/
+          cp ./murphysec-darwin-amd64/murphysec-darwin-amd64 ./out/
+          cp ./murphysec-darwin-arm64/murphysec-darwin-arm64 ./out
+          cp ./murphysec-linux-arm64/murphysec-linux-arm64 ./out
+          cd out
+          sha256sum * > sha256sum
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: out/*
+          draft: true

@@ -1,0 +1,82 @@
+name: Test
+
+on:
+  push:
+    tags:
+      - v*
+    branches:
+      - master
+      - v*
+      - dev*
+      - ci*
+      - feat*
+      - fix*
+      - refactor*
+      - 'refactor/*'
+    paths:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/*.yml"
+  pull_request:
+    paths:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/*.yml"
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+env:
+  DEFAULT_MAVEN_REPO: https://repo1.maven.org/maven2/
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Install Go tools
+        run: |
+          cd /tmp
+          go install golang.org/x/tools/cmd/stringer@v0.42.0
+
+      - name: Go mod tidy
+        run: go mod tidy
+
+      - name: Regenerate code
+        run: go generate -v ./...
+
+      - name: Reformat code
+        run: go fmt ./...
+
+      - name: Check difference
+        run: git diff --color --exit-code .
+
+      - name: Go vet
+        run: go vet -v .
+
+      - name: Install gotestfmt
+        run: go install github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt@latest
+
+      - name: Run tests
+        run: |
+          set -euo pipefail
+          go generate ./...
+          go test -json -v ./... 2>&1 | tee /tmp/gotest.log | gotestfmt 

@@ -1,0 +1,90 @@
+package model
+
+import (
+	"context"
+	"path/filepath"
+)
+
+type InspectionTask struct {
+	scanTask      *ScanTask
+	inspectionDir string
+	noCopy
+}
+
+func (i *InspectionTask) MavenModuleName() []string {
+	return i.scanTask.MavenModuleName
+}
+
+// IsNoBuild返回当前扫描器是否编译
+func (i *InspectionTask) IsNoBuild() bool {
+	return i.scanTask.IsNoBuild
+}
+func (i *InspectionTask) IsInternalCmd() bool {
+	return i.scanTask.IsInternalCmd
+}
+
+// Dir 返回当前扫描器扫描的路径，绝对路径
+func (i *InspectionTask) Dir() string {
+	return i.inspectionDir
+}
+
+// RelDir 返回相对路径
+func (i *InspectionTask) RelDir() string {
+	rel, e := filepath.Rel(i.scanTask.ProjectPath, i.inspectionDir)
+	if e != nil {
+		return ""
+	}
+	return rel
+}
+
+type _InspectionTaskCtxKey struct{}
+
+var inspectionTaskCtxKey _InspectionTaskCtxKey
+
+func WithInspectionTask(ctx context.Context, task *InspectionTask) context.Context {
+	if task == nil {
+		panic("task == nil")
+	}
+	return context.WithValue(ctx, inspectionTaskCtxKey, task)
+}
+
+func UseInspectionTask(ctx context.Context) *InspectionTask {
+	i, _ := ctx.Value(inspectionTaskCtxKey).(*InspectionTask)
+	return i
+}
+
+func (i *InspectionTask) AddModule(module Module) {
+	if filepath.IsAbs(module.ModulePath) {
+		relPath, _ := filepath.Rel(i.scanTask.ProjectPath, module.ModulePath)
+		module.ModulePath = relPath
+	}
+	if module.ModulePath == "." {
+		module.ModulePath = "./"
+	}
+	module.ModulePath = filepath.ToSlash(module.ModulePath)
+	i.scanTask.Modules = append(i.scanTask.Modules, module)
+}
+
+type RegisteredAutoBuild struct {
+	task   *ScanTask
+	marked bool
+	noCopy
+}
+
+func (r *RegisteredAutoBuild) MarkFailed() {
+	if r.marked {
+		return
+	}
+	r.marked = true
+	r.task.AutoBuildFailedCount++
+}
+
+func (r *RegisteredAutoBuild) MarkDisabled() {
+	r.marked = true
+	r.task.AutoBuildCount--
+}
+
+func (i *InspectionTask) RegisterAutoBuild() *RegisteredAutoBuild {
+	i.scanTask.AutoBuildCount++
+	return &RegisteredAutoBuild{task: i.scanTask}
+}

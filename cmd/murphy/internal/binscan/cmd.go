@@ -1,0 +1,188 @@
+package binscan
+
+import (
+	"context"
+	"path/filepath"
+
+	"github.com/murphysecurity/murphysec/api"
+	"github.com/murphysecurity/murphysec/chunkupload"
+	"github.com/murphysecurity/murphysec/cmd/murphy/internal/common"
+	"github.com/murphysecurity/murphysec/cmd/murphy/internal/cv"
+	"github.com/murphysecurity/murphysec/env"
+	"github.com/murphysecurity/murphysec/errors"
+	"github.com/murphysecurity/murphysec/infra/exitcode"
+	"github.com/murphysecurity/murphysec/infra/logctx"
+	"github.com/murphysecurity/murphysec/infra/ref"
+	"github.com/murphysecurity/murphysec/infra/ui"
+	"github.com/murphysecurity/murphysec/inspector"
+	"github.com/murphysecurity/murphysec/model"
+	"github.com/murphysecurity/murphysec/utils"
+	"github.com/spf13/cobra"
+)
+
+var cliIOTScan bool
+var projectNameCli string
+var projectTagNames []string
+var imageScan bool
+var extraData string
+var webhookAddr string
+var webhookMode common.WebhookModeFlag
+var webhookToken []string
+
+func Cmd() *cobra.Command {
+	var c cobra.Command
+	c.Use = "binscan <DIR>"
+	c.Args = cobra.ExactArgs(1)
+	c.Run = binScanRun
+	c.Short = "Detects open source vulnerabilities by scanning binary files"
+	c.Flags().BoolVar(&cliIOTScan, "iot", false, "IOT scan mode")
+	c.Flags().StringVar(&projectNameCli, "project-name", "", "specify project name")
+	c.Flags().StringArrayVar(&projectTagNames, "project-tag", make([]string, 0), "specify the tag of the project")
+	c.Flags().StringVar(&extraData, "extra-data", "", "specify the extra data")
+	c.Flags().StringVar(&webhookAddr, "webhook-addr", "", "specify the webhook address")
+	c.Flags().Var(&webhookMode, "webhook-mode", "specify the webhook mode, currently supports: simple, full")
+	c.Flags().StringArrayVar(&webhookToken, "webhook-token", make([]string, 0), "specify the webhook token in key=value format. Can be specified multiple times.")
+	return &c
+}
+
+func ImageScanCmd() *cobra.Command {
+	var c cobra.Command
+	c.Use = "imagescan <DIR>"
+	c.Args = cobra.ExactArgs(1)
+	c.Run = func(cmd *cobra.Command, args []string) {
+		imageScan = true
+		binScanRun(cmd, args)
+	}
+	c.Short = "Detects open source vulnerabilities by scanning docker image files"
+	c.Flags().StringVar(&projectNameCli, "project-name", "", "specify project name")
+	c.Flags().StringArrayVar(&projectTagNames, "project-tag", make([]string, 0), "specify the tag of the project")
+	c.Flags().StringVar(&extraData, "extra-data", "", "specify the extra data")
+	c.Flags().StringVar(&webhookAddr, "webhook-addr", "", "specify the webhook address")
+	c.Flags().Var(&webhookMode, "webhook-mode", "specify the webhook mode, currently supports: simple, full")
+	c.Flags().StringArrayVar(&webhookToken, "webhook-token", make([]string, 0), "specify the webhook token in key=value format. Can be specified multiple times.")
+	return &c
+}
+
+func binScanRun(cmd *cobra.Command, args []string) {
+	var (
+		// workaround
+		ctx      = ui.With(context.TODO(), ui.CLI)
+		scanPath = args[0]
+		e        error
+	)
+	// get absolute path and check if a directory
+	scanPath, e = filepath.Abs(scanPath)
+	if e != nil {
+		cv.DisplayScanInvalidPath(ctx, e)
+	}
+	if !utils.IsFile(scanPath) {
+		cv.DisplayScanInvalidPathMustFile(ctx, nil)
+		exitcode.Set(1)
+		return
+	}
+	for _, it := range projectTagNames {
+		if len([]rune(it)) > 10 {
+			cv.DisplayInitializeFailed(ctx, errors.New("请输入10个字符以内的项目标签"))
+			exitcode.Set(1)
+		}
+	}
+	// init logging
+	ctx, e = common.InitLogger(ctx)
+	if e != nil {
+		cv.DisplayInitializeFailed(ctx, e)
+		exitcode.Set(1)
+		return
+	}
+	var logger = logctx.Use(ctx).Sugar()
+
+	// init API
+	e = common.InitAPIClient(ctx)
+	if e != nil {
+		cv.DisplayInitializeFailed(ctx, e)
+		logger.Error(e)
+		exitcode.Set(1)
+		return
+	}
+
+	e = binScan(ctx, scanPath)
+	if errors.Is(e, inspector.ErrNoWait) {
+		return
+	}
+	if e != nil {
+		logger.Error(e)
+		exitcode.Set(1)
+		return
+	}
+
+}
+
+func binScan(ctx context.Context, scanPath string) error {
+	var mode = model.ScanModeBinary
+	if cliIOTScan {
+		mode = model.ScanModeIot
+	}
+	if imageScan {
+		mode = model.ScanModeImage
+	}
+
+	var createSubtask api.CreateSubTaskRequest
+	createSubtask.AccessType = model.AccessTypeCli
+	createSubtask.ScanMode = mode
+	createSubtask.Dir = scanPath
+	createSubtask.ProjectName = projectNameCli
+	createSubtask.TeamId = common.CliTeamIdOverride
+	createSubtask.ProjectTagNames = projectTagNames
+	createSubtask.ExtraData = &extraData
+	if webhookAddr != "" {
+		createSubtask.WebhookAddr = ref.OmitZero(webhookAddr)
+		createSubtask.WebhookMode = ref.OmitZero(webhookMode.String())
+		// parse and set webhook token
+		if len(webhookToken) > 0 {
+			headers, err := common.ParseWebhookToken(webhookToken)
+			if err != nil {
+				cv.DisplayCreateSubtaskErr(ctx, err)
+				return err
+			}
+			createSubtask.NoticeApiHeaders = headers
+		}
+	}
+
+	taskResp, e := api.CreateSubTask(api.DefaultClient(), &createSubtask)
+	if e != nil {
+		cv.DisplayCreateSubtaskErr(ctx, e)
+		return e
+	}
+	cv.DisplayAlertMessage(ctx, taskResp.AlertMessage)
+	cv.DisplaySubtaskCreated(ctx, taskResp.ProjectsName, taskResp.SubtaskID)
+	cv.DisplayUploading(ctx)
+	defer cv.DisplayStatusClear(ctx)
+	e = chunkupload.UploadFile(ctx, scanPath, chunkupload.Params{
+		TaskId:    taskResp.TaskID,
+		SubtaskId: taskResp.SubtaskID,
+	})
+	if e != nil {
+		cv.DisplayUploadErr(ctx, e)
+		return e
+	}
+
+	e = api.StartCheck(api.DefaultClient(), &model.ScanTask{SubtaskId: taskResp.SubtaskID})
+	if e != nil {
+		cv.DisplayScanFailed(ctx, e)
+		return e
+	}
+	if env.NoWait {
+		return inspector.ErrNoWait
+	}
+	cv.DisplayWaitingResponse(ctx)
+	// query result
+	var result *model.ScanResultResponse
+	result, e = api.QueryResult(ctx, api.DefaultClient(), taskResp.SubtaskID)
+	if e != nil {
+		cv.DisplayScanFailed(ctx, e)
+	}
+	cv.DisplayReportUrl(ctx, *result)
+	cv.DisplayStatusClear(ctx)
+	cv.DisplayScanResultSummary(ctx, result.RelyNum, result.LeakNum, len(result.VulnInfoMap), result.ScanWarnings)
+
+	return nil
+}

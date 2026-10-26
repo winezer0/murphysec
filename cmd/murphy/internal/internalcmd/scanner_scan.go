@@ -1,0 +1,117 @@
+package internalcmd
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/murphysecurity/murphysec/cmd/murphy/internal/common"
+	"github.com/murphysecurity/murphysec/env"
+	"github.com/murphysecurity/murphysec/infra/exitcode"
+	"github.com/murphysecurity/murphysec/infra/logctx"
+	"github.com/murphysecurity/murphysec/infra/ui"
+	"github.com/murphysecurity/murphysec/inspector"
+	"github.com/murphysecurity/murphysec/model"
+	"github.com/murphysecurity/murphysec/scanerr"
+	"github.com/murphysecurity/murphysec/utils"
+	"github.com/murphysecurity/murphysec/utils/must"
+	"github.com/spf13/cobra"
+)
+
+func scannerScanCmd() *cobra.Command {
+	var c cobra.Command
+	c.Use = "scanner_scan <DIR>"
+	c.Args = cobra.ExactArgs(1)
+	c.Run = scannerScanRun
+
+	return &c
+}
+
+func scannerScanRun(cmd *cobra.Command, args []string) {
+	var (
+		ctx     = ui.With(context.TODO(), ui.None)
+		scanDir = args[0]
+		e       error
+	)
+	ctx = scanerr.WithCtx(ctx)
+	env.ScannerScan = true
+	must.Must(common.LogLevel.Set("debug"))
+	ctx, e = common.InitLogger0(ctx, true)
+	if e != nil {
+		fmt.Fprintf(os.Stderr, "init logger failed: %v\n", e)
+	}
+	var logger = logctx.Use(ctx).Sugar()
+
+	// get absolute path and check if a directory
+	scanDir = must.A(filepath.Abs(scanDir))
+	if !utils.IsDir(scanDir) {
+		logger.Error("not a directory")
+		exitcode.Set(1)
+		return
+	}
+
+	var scantask = &model.ScanTask{
+		ProjectPath:   scanDir,
+		AccessType:    model.AccessTypeCli,
+		Mode:          model.ScanModeSource,
+		TaskId:        "",
+		SubtaskId:     "",
+		Modules:       nil,
+		Result:        nil,
+		IsNoBuild:     env.DoNotBuild,
+		IsInternalCmd: true,
+	}
+	ctx = model.WithScanTask(ctx, scantask)
+	e = inspector.ManagedInspect(ctx)
+	if e != nil {
+		logger.Error(e)
+		exitcode.Set(1)
+	}
+
+	type wrapper struct {
+		Modules                             []model.Module                `json:"modules"`
+		ComponentCodeFragment               []model.ComponentCodeFragment `json:"component_code_fragment"`
+		ScannerShouldEnableMavenBackupScan  bool                          `json:"scanner_should_enable_maven_backup_scan"`
+		ScannerShouldEnableGradleBackupScan bool                          `json:"scanner_should_enable_gradle_backup_scan"`
+		ScanWarnings                        []scanerr.Param               `json:"scan_warnings"`
+		AutoBuildCount                      int                           `json:"auto_build_count"`
+		AutoBuildFailedCount                int                           `json:"auto_build_failed_count"`
+		SkillsSummary                       *model.SkillSummary           `json:"skills_summary,omitempty"`
+		Skills                              []model.SkillItem             `json:"skills"`
+	}
+	w := wrapper{
+		Modules:                             utils.NoNilSlice(scantask.Modules),
+		ComponentCodeFragment:               utils.NoNilSlice(scantask.CodeFragments),
+		ScannerShouldEnableMavenBackupScan:  env.ScannerShouldEnableMavenBackupScan,
+		ScannerShouldEnableGradleBackupScan: env.ScannerShouldEnableGradleBackupScan,
+		ScanWarnings:                        scanerr.GetAll(ctx),
+		AutoBuildCount:                      scantask.AutoBuildCount,
+		AutoBuildFailedCount:                scantask.AutoBuildFailedCount,
+		Skills:                              make([]model.SkillItem, 0),
+	}
+	if scantask.Result != nil {
+		w.SkillsSummary = scantask.Result.SkillsSummary
+		w.Skills = utils.NoNilSlice(scantask.Result.Skills)
+	}
+	for i := range scantask.Modules {
+		for j := range scantask.Modules[i].Dependencies {
+			scantask.Modules[i].Dependencies[j].Postprocess()
+		}
+	}
+	if env.WaitAfterScannerScan {
+		logger.Warn("client will wait here!")
+	}
+	logger.Info("scanner scan completed, now writing output to stdout")
+	_ = logger.Sync()
+	fmt.Println("")
+	var enc = json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	must.M(enc.Encode(w))
+	fmt.Println("")
+	if env.WaitAfterScannerScan {
+		time.Sleep(time.Hour)
+	}
+}
