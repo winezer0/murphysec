@@ -17,7 +17,7 @@ require (
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99
 	github.com/klauspost/pgzip v1.2.6
 	github.com/magiconair/properties v1.8.7
-	github.com/mattn/go-isatty v0.0.20
+	github.com/mattn/go-isatty v0.0.24
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/muesli/termenv v0.15.2
 	github.com/murphysecurity/fix-tools v0.1.9
