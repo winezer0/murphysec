@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -145,14 +146,29 @@ func BuildSpdxWithNotes(task *model.ScanTask, notes []string) []byte {
 		// list; the relationships still carry the full graph.
 		spdx["documentDescribes"] = []string{"SPDXRef-package-0"}
 	}
-	if len(notes) > 0 {
-		spdx["annotations"] = []map[string]any{{
+	// Annotations carry what the SPDX schema has no field for: a degraded scan
+	// and packages a consumer will not be able to identify.
+	var annotations []map[string]any
+	addAnnotation := func(comment string) {
+		annotations = append(annotations, map[string]any{
 			"annotationDate": time.Now().UTC().Format(time.RFC3339),
 			"annotationType": "OTHER",
 			"annotator":      "Tool: murphysec-cli",
-			"comment": "scan degraded (" + strings.Join(notes, ", ") +
-				"): the dependency graph may be incomplete, so vulnerabilities may be under-reported",
-		}}
+			"comment":        comment,
+		})
+	}
+	if len(notes) > 0 {
+		addAnnotation("scan degraded (" + strings.Join(notes, ", ") +
+			"): the dependency graph may be incomplete, so vulnerabilities may be under-reported")
+	}
+	if ecosystems, count := unmappedEcosystems(g.nodes); count > 0 {
+		addAnnotation(fmt.Sprintf(
+			"%d package(s) from ecosystem(s) %s have no package-url type and therefore no purl; "+
+				"SBOM consumers will drop them, so their vulnerabilities cannot be reported",
+			count, strings.Join(ecosystems, ", ")))
+	}
+	if len(annotations) > 0 {
+		spdx["annotations"] = annotations
 	}
 	data, e := json.MarshalIndent(spdx, "", "  ")
 	if e != nil {
@@ -164,11 +180,17 @@ func BuildSpdxWithNotes(task *model.ScanTask, notes []string) []byte {
 // purlTypeByEcosystem maps a murphysec ecosystem identifier onto a package-url
 // type (https://github.com/package-url/purl-spec).
 //
-// Ecosystems absent from the table have no purl type. Their packages are still
-// exported, just without a purl, and an SBOM consumer cannot identify them:
-// osv-scanner reports "Filtered N local/unscannable package/s" and drops them
-// without failing, so a missing purl is a silent loss of coverage rather than
-// a visible error.
+// Two different ecosystems may share a purl type: rebar3 and mix both publish
+// to Hex, so Erlang packages use pkg:hex.
+//
+// An ecosystem is listed here only if package-url defines a type for it.
+// Inventing a type for an ecosystem that has none is worse than omitting the
+// purl: a consumer would look it up in a namespace nobody else understands.
+//
+// Whether OSV can actually match a purl is a separate question, answered by
+// https://ossf.github.io/osv-schema/#defined-ecosystems. A valid purl for an
+// ecosystem OSV does not cover (cpan, luarocks, cocoapods) is still the correct
+// metadata; it simply finds nothing.
 var purlTypeByEcosystem = map[string]string{
 	"maven":     "maven",
 	"npm":       "npm",
@@ -182,7 +204,16 @@ var purlTypeByEcosystem = map[string]string{
 	"conan":     "conan",
 	"cocoapods": "cocoapods",
 	"luarocks":  "luarocks",
+	"cran":      "cran",
 	"hex":       "hex",
+	// rebar3 is the Erlang build tool; its packages come from Hex.
+	"rebar": "hex",
+	// CPAN. The purl name is the distribution name, which for the modules
+	// murphysec reads from META.json is the module name itself.
+	"perl": "cpan",
+	// Swift Package Manager. No inspector emits this today (renv used to
+	// mislabel itself as spm); the mapping is correct if one is added.
+	"spm": "swift",
 }
 
 // componentPURL builds the package URL of a component, or "" when its
@@ -215,6 +246,17 @@ func componentPURL(node model.Component) string {
 				name = url.PathEscape(pkg)
 				break
 			}
+		}
+		name = url.PathEscape(node.CompName)
+	case "swift":
+		// Swift package identities are repository paths, and the spec keeps the
+		// host and owner in the namespace:
+		//   github.com/Alamofire/Alamofire -> namespace github.com/Alamofire,
+		//   name Alamofire.
+		if i := strings.LastIndex(node.CompName, "/"); i > 0 {
+			namespace = escapePURLPath(node.CompName[:i])
+			name = url.PathEscape(node.CompName[i+1:])
+			break
 		}
 		name = url.PathEscape(node.CompName)
 	default:
@@ -260,4 +302,45 @@ func componentName(node model.Component) string {
 		}
 	}
 	return node.CompName
+}
+
+// unmappedEcosystems reports the ecosystems whose packages were exported
+// without a purl, together with the package count.
+//
+// Such a package cannot be identified by an SBOM consumer. osv-scanner counts
+// it in "found N packages", then logs
+//
+//	Filtered N local/unscannable package/s from the scan.
+//
+// and returns an empty results array with exit status 0. The report looks clean
+// without having checked anything, so the gap is surfaced as a document
+// annotation instead of being left implicit.
+//
+// Ecosystems are returned sorted so the annotation is stable across runs.
+func unmappedEcosystems(nodes []model.Component) ([]string, int) {
+	counts := make(map[string]int)
+	for _, node := range nodes {
+		if node.CompName == "" {
+			continue
+		}
+		if typ, ok := purlTypeByEcosystem[strings.ToLower(node.Ecosystem)]; ok && typ != "" {
+			continue
+		}
+		ecosystem := node.Ecosystem
+		if ecosystem == "" {
+			ecosystem = "(unset)"
+		}
+		counts[ecosystem]++
+	}
+	if len(counts) == 0 {
+		return nil, 0
+	}
+	ecosystems := make([]string, 0, len(counts))
+	total := 0
+	for ecosystem, n := range counts {
+		ecosystems = append(ecosystems, ecosystem)
+		total += n
+	}
+	sort.Strings(ecosystems)
+	return ecosystems, total
 }
