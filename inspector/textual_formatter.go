@@ -42,7 +42,19 @@ func (d *DependencyGraph) _visit(parent model.Component, dep model.DependencyIte
 	}
 }
 
+// BuildSpdx renders the dependency graph as an SPDX 2.3 JSON document.
 func BuildSpdx(task *model.ScanTask) []byte {
+	return BuildSpdxWithNotes(task, nil)
+}
+
+// BuildSpdxWithNotes is BuildSpdx plus document-level annotations.
+//
+// SPDX has no field for "this scan was degraded", but that is exactly the kind
+// of caveat a consumer of an SBOM needs: a graph produced by the fallback
+// resolver is incomplete, and an incomplete graph under-reports
+// vulnerabilities. Notes are written as document annotations so they survive
+// alongside the data instead of being lost on stderr.
+func BuildSpdxWithNotes(task *model.ScanTask, notes []string) []byte {
 	var g = DependencyGraph{
 		nodes:     nil,
 		nodeIndex: make(map[model.Component]int),
@@ -115,13 +127,32 @@ func BuildSpdx(task *model.ScanTask) []byte {
 		"SPDXID":      "SPDXRef-DOCUMENT",
 		"spdxVersion": "SPDX-2.3",
 		"creationInfo": map[string]any{
-			"created":  time.Now(),
+			"created":  time.Now().UTC().Format(time.RFC3339),
 			"creators": []string{"Tool: murphysec-cli"},
 		},
-		"name":          env.SpdxName,
-		"dataLicense":   "CC0-1.0",
-		"packages":      packages,
-		"relationships": relationships,
+		"name":        env.SpdxName,
+		"dataLicense": "CC0-1.0",
+		// documentNamespace is required by SPDX 2.3 and must be unique per
+		// document; without it a strict validator rejects the file even though
+		// tolerant consumers such as osv-scanner accept it.
+		"documentNamespace": fmt.Sprintf("https://murphysec.com/spdx/%s-%d", env.SpdxName, time.Now().UnixNano()),
+		"packages":          packages,
+		"relationships":     relationships,
+	}
+	if len(packages) > 0 {
+		// documentDescribes names the element the document is about. The first
+		// package is the closest equivalent of a subject in a flat component
+		// list; the relationships still carry the full graph.
+		spdx["documentDescribes"] = []string{"SPDXRef-package-0"}
+	}
+	if len(notes) > 0 {
+		spdx["annotations"] = []map[string]any{{
+			"annotationDate": time.Now().UTC().Format(time.RFC3339),
+			"annotationType": "OTHER",
+			"annotator":      "Tool: murphysec-cli",
+			"comment": "scan degraded (" + strings.Join(notes, ", ") +
+				"): the dependency graph may be incomplete, so vulnerabilities may be under-reported",
+		}}
 	}
 	data, e := json.MarshalIndent(spdx, "", "  ")
 	if e != nil {

@@ -473,7 +473,7 @@ func doSBOMOnlyPrint(ctx context.Context, task *model.ScanTask) {
 	// what lets osv-scanner (and any other SBOM consumer) identify the package
 	// instead of treating it as unscannable.
 	if sbomOutputType.IsSPDX() {
-		_, e := bufioWriter.Write(inspector.BuildSpdx(task))
+		_, e := bufioWriter.Write(inspector.BuildSpdxWithNotes(task, scanWarningCodes(ctx)))
 		must.M(e)
 		return
 	}
@@ -485,6 +485,14 @@ func doSBOMOnlyPrint(ctx context.Context, task *model.ScanTask) {
 	}
 	must.M(enc.Encode(map[string]any{
 		"modules":             task.Modules,
-		"scan_warnings_codes": lo.Uniq(fp.Map(func(it scanerr.Param) string { return it.Kind })(scanerr.GetAll(ctx))),
+		"scan_warnings_codes": scanWarningCodes(ctx),
 	}))
+}
+
+// scanWarningCodes returns the distinct degradation reasons recorded during the
+// scan, e.g. "mvn_not_found". They belong in every SBOM format: a consumer that
+// cannot tell a degraded graph from a complete one will trust an incomplete
+// dependency list.
+func scanWarningCodes(ctx context.Context) []string {
+	return lo.Uniq(fp.Map(func(it scanerr.Param) string { return it.Kind })(scanerr.GetAll(ctx)))
 }
