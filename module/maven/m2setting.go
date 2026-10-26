@@ -69,7 +69,16 @@ func GetMvnConfig(ctx context.Context) (*UserConfig, error) {
 		return defaultUserConfig(), nil
 	}
 
+	// Seed the local repository with Maven's default before parsing. A
+	// settings.xml usually exists but rarely declares <localRepository>; when
+	// that element is absent the repository must fall back to ~/.m2/repository
+	// rather than staying empty. Leaving it empty made the local repository
+	// unusable, so every parent pom had to be fetched over the network and an
+	// air-gapped scan resolved nothing.
 	var uc = &UserConfig{}
+	if p, e := homedir.Expand("~/.m2/repository"); e == nil {
+		uc.Repo = p
+	}
 	for _, it := range xmlquery.Find(node, "/settings/mirrors/mirror") {
 		url := xmlquery.FindOne(it, "url")
 		if url == nil {
