@@ -6,3 +6,10 @@ $RECYCLE.BIN
 .idea
 lost+found
 __MACOSX
+# vendor holds a copy of every dependency's source tree. Those trees ship their
+# own manifests (Gopkg.lock, package.json, pom.xml ...) and would be parsed as
+# separate projects, adding the dependency's dependencies as if they belonged to
+# this one. The dependency set of a vendored project is described by the root
+# manifest (go.mod, composer.lock) or by vendor/modules.txt, never by walking
+# into the copy.
+vendor
