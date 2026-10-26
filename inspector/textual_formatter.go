@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -65,32 +66,28 @@ func BuildSpdx(task *model.ScanTask) []byte {
 			"fileAnalyzed": false,
 		}
 		var externalRefs = make([]map[string]any, 0)
-		if node.Ecosystem == "maven" {
+		// A native package-manager reference is kept where one exists, but the
+		// purl is what actually matters downstream: SBOM consumers such as
+		// osv-scanner identify a package by its purl and silently drop
+		// packages that have none.
+		switch node.Ecosystem {
+		case "maven":
 			externalRefs = append(externalRefs, map[string]any{
 				"referenceCategory": "PACKAGE-MANAGER",
 				"referenceLocator":  node.CompName + ":" + node.CompVersion,
 				"referenceType":     "maven-central",
-			}, map[string]any{
-				"referenceCategory": "PACKAGE-MANAGER",
-				"referenceLocator":  "pkg:maven/" + strings.ReplaceAll(node.CompName, ":", "/") + "@" + node.CompVersion,
-				"referenceType":     "purl",
 			})
-		}
-		if node.Ecosystem == "npm" {
+		case "npm":
 			externalRefs = append(externalRefs, map[string]any{
 				"referenceCategory": "PACKAGE-MANAGER",
 				"referenceLocator":  node.CompName + "@" + node.CompVersion,
 				"referenceType":     "npm",
-			}, map[string]any{
-				"referenceCategory": "PACKAGE-MANAGER",
-				"referenceLocator":  "pkg:npm/" + node.CompName + "@" + node.CompVersion,
-				"referenceType":     "purl",
 			})
 		}
-		if node.Ecosystem == "go" {
+		if purl := componentPURL(node); purl != "" {
 			externalRefs = append(externalRefs, map[string]any{
 				"referenceCategory": "PACKAGE-MANAGER",
-				"referenceLocator":  "pkg:golang/" + node.CompName + "@" + node.CompVersion,
+				"referenceLocator":  purl,
 				"referenceType":     "purl",
 			})
 		}
@@ -131,4 +128,93 @@ func BuildSpdx(task *model.ScanTask) []byte {
 		panic("marshal spdx failed: " + e.Error())
 	}
 	return data
+}
+
+// purlTypeByEcosystem maps a murphysec ecosystem identifier onto a package-url
+// type (https://github.com/package-url/purl-spec).
+//
+// Ecosystems absent from the table have no purl type. Their packages are still
+// exported, just without a purl, and an SBOM consumer cannot identify them:
+// osv-scanner reports "Filtered N local/unscannable package/s" and drops them
+// without failing, so a missing purl is a silent loss of coverage rather than
+// a visible error.
+var purlTypeByEcosystem = map[string]string{
+	"maven":     "maven",
+	"npm":       "npm",
+	"pypi":      "pypi",
+	"go":        "golang",
+	"nuget":     "nuget",
+	"composer":  "composer",
+	"cargo":     "cargo",
+	"bundler":   "gem",
+	"pubspec":   "pub",
+	"conan":     "conan",
+	"cocoapods": "cocoapods",
+	"luarocks":  "luarocks",
+	"hex":       "hex",
+}
+
+// componentPURL builds the package URL of a component, or "" when its
+// ecosystem has no purl type.
+func componentPURL(node model.Component) string {
+	typ, ok := purlTypeByEcosystem[strings.ToLower(node.Ecosystem)]
+	if !ok || typ == "" || node.CompName == "" {
+		return ""
+	}
+
+	var namespace, name string
+	switch typ {
+	case "maven":
+		// Maven coordinates are "groupId:artifactId". A purl expresses that as
+		// namespace/name, so the colon becomes a slash.
+		group, artifact, found := strings.Cut(node.CompName, ":")
+		if !found {
+			name = url.PathEscape(node.CompName)
+			break
+		}
+		namespace = url.PathEscape(group)
+		name = url.PathEscape(artifact)
+	case "npm":
+		// Scoped packages are "@scope/name". The purl spec wants the scope as a
+		// namespace with the leading '@' percent-encoded.
+		if strings.HasPrefix(node.CompName, "@") {
+			scope, pkg, found := strings.Cut(strings.TrimPrefix(node.CompName, "@"), "/")
+			if found {
+				namespace = "%40" + url.PathEscape(scope)
+				name = url.PathEscape(pkg)
+				break
+			}
+		}
+		name = url.PathEscape(node.CompName)
+	default:
+		// Multi-segment names such as Go module paths keep their slashes: the
+		// last segment becomes the name and the rest the namespace only for
+		// some types, so the whole path is escaped segment by segment.
+		name = escapePURLPath(node.CompName)
+	}
+
+	var b strings.Builder
+	b.WriteString("pkg:")
+	b.WriteString(typ)
+	b.WriteString("/")
+	if namespace != "" {
+		b.WriteString(namespace)
+		b.WriteString("/")
+	}
+	b.WriteString(name)
+	if node.CompVersion != "" {
+		b.WriteString("@")
+		b.WriteString(escapePURLPath(node.CompVersion))
+	}
+	return b.String()
+}
+
+// escapePURLPath percent-encodes each slash-separated segment of a purl,
+// leaving the separators intact.
+func escapePURLPath(s string) string {
+	parts := strings.Split(s, "/")
+	for i := range parts {
+		parts[i] = url.PathEscape(parts[i])
+	}
+	return strings.Join(parts, "/")
 }
