@@ -9,7 +9,7 @@ require (
 	github.com/antchfx/xmlquery v1.5.0
 	github.com/antlr4-go/antlr/v4 v4.13.1
 	github.com/bahlo/generic-list-go v0.2.0
-	github.com/dlclark/regexp2 v1.11.4
+	github.com/dlclark/regexp2 v1.12.0
 	github.com/go-git/go-git/v5 v5.13.1
 	github.com/iseki0/go-yarnlock v0.1.1
 	github.com/iseki0/machineid v0.0.0-20240820072516-35aa9673a496
