@@ -188,3 +188,66 @@ func TestSpdxReportsPackagesWithoutPURL(t *testing.T) {
 		t.Fatalf("missing consumer warning annotation: %+v", document.Annotations)
 	}
 }
+
+func TestBuildSpdxPreservesDirectDependencyRoots(t *testing.T) {
+	directA := model.Component{CompName: "direct-a", CompVersion: "1.0", EcoRepo: model.EcoRepo{Ecosystem: "npm"}}
+	directB := model.Component{CompName: "direct-b", CompVersion: "2.0", EcoRepo: model.EcoRepo{Ecosystem: "npm"}}
+	transitiveA := model.Component{CompName: "transitive-a", CompVersion: "3.0", EcoRepo: model.EcoRepo{Ecosystem: "npm"}}
+	transitiveB := model.Component{CompName: "transitive-b", CompVersion: "4.0", EcoRepo: model.EcoRepo{Ecosystem: "npm"}}
+	task := &model.ScanTask{Modules: []model.Module{{Dependencies: []model.DependencyItem{
+		{
+			Component:          directA,
+			DependencyRelation: model.DependencyRelationDirect,
+			Dependencies: []model.DependencyItem{{
+				Component:          transitiveA,
+				DependencyRelation: model.DependencyRelationTransitive,
+				Dependencies: []model.DependencyItem{{
+					Component:          transitiveB,
+					DependencyRelation: model.DependencyRelationTransitive,
+				}},
+			}},
+		},
+		{Component: directB, DependencyRelation: model.DependencyRelationDirect},
+	}}}}
+
+	var document struct {
+		Packages []struct {
+			ID   string `json:"SPDXID"`
+			Name string `json:"name"`
+		} `json:"packages"`
+		Relationships []struct {
+			From string `json:"spdxElementId"`
+			To   string `json:"relatedSpdxElement"`
+			Type string `json:"relationshipType"`
+		} `json:"relationships"`
+		DocumentDescribes []string `json:"documentDescribes"`
+	}
+	if err := json.Unmarshal(BuildSpdx(task), &document); err != nil {
+		t.Fatal(err)
+	}
+	packageIDs := make(map[string]string, len(document.Packages))
+	for _, pkg := range document.Packages {
+		packageIDs[pkg.Name] = pkg.ID
+	}
+	want := map[string]bool{
+		"SPDXRef-DOCUMENT->" + packageIDs["direct-a"]:                  true,
+		"SPDXRef-DOCUMENT->" + packageIDs["direct-b"]:                  true,
+		packageIDs["direct-a"] + "->" + packageIDs["transitive-a"]:     true,
+		packageIDs["transitive-a"] + "->" + packageIDs["transitive-b"]: true,
+	}
+	if len(document.Relationships) != len(want) {
+		t.Fatalf("got %d relationships, want %d: %+v", len(document.Relationships), len(want), document.Relationships)
+	}
+	for _, relationship := range document.Relationships {
+		if relationship.Type != "DEPENDS_ON" {
+			t.Errorf("relationship type = %q, want DEPENDS_ON", relationship.Type)
+		}
+		delete(want, relationship.From+"->"+relationship.To)
+	}
+	if len(want) != 0 {
+		t.Errorf("missing dependency relationships: %v", want)
+	}
+	if len(document.DocumentDescribes) != 0 {
+		t.Errorf("documentDescribes = %v, should not misidentify a dependency as the project root", document.DocumentDescribes)
+	}
+}

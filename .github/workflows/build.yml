@@ -69,16 +69,22 @@ jobs:
         include:
           - goos: linux
             goarch: amd64
+            archive: tar.gz
           - goos: linux
             goarch: arm64
+            archive: tar.gz
           - goos: darwin
             goarch: amd64
+            archive: tar.gz
           - goos: darwin
             goarch: arm64
+            archive: tar.gz
           - goos: windows
             goarch: amd64
+            archive: zip
           - goos: windows
             goarch: arm64
+            archive: zip
 
     steps:
       - uses: actions/checkout@v4
@@ -118,10 +124,28 @@ jobs:
         if: matrix.goos == 'windows'
         run: mv "out/murphysec-${{ matrix.goos }}-${{ matrix.goarch }}" "out/murphysec-${{ matrix.goos }}-${{ matrix.goarch }}.exe"
 
+      - name: Package release asset
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          RELEASE_VERSION: ${{ needs.resolve-version.outputs.version }}
+          ARCHIVE_FORMAT: ${{ matrix.archive }}
+          BINARY_EXTENSION: ${{ matrix.goos == 'windows' && '.exe' || '' }}
+        shell: bash
+        run: |
+          version="${RELEASE_VERSION:-dev}"
+          asset="murphysec_${version}_${GOOS}_${GOARCH}.${ARCHIVE_FORMAT}"
+          binary="murphysec-${GOOS}-${GOARCH}${BINARY_EXTENSION}"
+          if [[ "$ARCHIVE_FORMAT" == "zip" ]]; then
+            (cd out && zip -q "$asset" "$binary")
+          else
+            tar -czf "out/$asset" -C out "$binary"
+          fi
+
       - uses: actions/upload-artifact@v4
         with:
           name: murphysec-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: out/murphysec-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
+          path: out/murphysec_${{ needs.resolve-version.outputs.version || 'dev' }}_${{ matrix.goos }}_${{ matrix.goarch }}.${{ matrix.archive }}
           if-no-files-found: error
           retention-days: 1
 

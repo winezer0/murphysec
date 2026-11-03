@@ -39,7 +39,7 @@ func (d *DependencyGraph) putEdge(from, to model.Component) {
 func (d *DependencyGraph) _visit(parent model.Component, dep model.DependencyItem) {
 	d.putEdge(parent, dep.Component)
 	for _, it := range dep.Dependencies {
-		d._visit(it.Component, it)
+		d._visit(dep.Component, it)
 	}
 }
 
@@ -61,9 +61,13 @@ func BuildSpdxWithNotes(task *model.ScanTask, notes []string) []byte {
 		nodeIndex: make(map[model.Component]int),
 		edges:     make(map[[2]int]struct{}),
 	}
+	var directNodes = make(map[int]struct{})
 	for _, module := range task.Modules {
 		for _, it := range module.Dependencies {
-			g.indexOf(it.Component)
+			// Dependencies declared by a project are the roots of the graph.
+			// Record them explicitly so consumers can distinguish direct
+			// packages from unconnected packages when they have no children.
+			directNodes[g.indexOf(it.Component)] = struct{}{}
 			for _, dependency := range it.Dependencies {
 				g._visit(it.Component, dependency)
 			}
@@ -129,6 +133,18 @@ func BuildSpdxWithNotes(task *model.ScanTask, notes []string) []byte {
 		}
 		return edges[i][1] < edges[j][1]
 	})
+	var directIndexes = make([]int, 0, len(directNodes))
+	for index := range directNodes {
+		directIndexes = append(directIndexes, index)
+	}
+	sort.Ints(directIndexes)
+	for _, index := range directIndexes {
+		relationships = append(relationships, map[string]any{
+			"relationshipType":   "DEPENDS_ON",
+			"spdxElementId":      "SPDXRef-DOCUMENT",
+			"relatedSpdxElement": fmt.Sprint("SPDXRef-package-", index),
+		})
+	}
 	for _, ints := range edges {
 		var from = ints[0]
 		var to = ints[1]
@@ -153,12 +169,6 @@ func BuildSpdxWithNotes(task *model.ScanTask, notes []string) []byte {
 		"documentNamespace": fmt.Sprintf("https://murphysec.com/spdx/%s-%d", env.SpdxName, time.Now().UnixNano()),
 		"packages":          packages,
 		"relationships":     relationships,
-	}
-	if len(packages) > 0 {
-		// documentDescribes names the element the document is about. The first
-		// package is the closest equivalent of a subject in a flat component
-		// list; the relationships still carry the full graph.
-		spdx["documentDescribes"] = []string{"SPDXRef-package-0"}
 	}
 	// Annotations carry what the SPDX schema has no field for: a degraded scan
 	// and packages a consumer will not be able to identify.
