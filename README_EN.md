@@ -23,7 +23,8 @@ This project is based on [murphysecurity/murphysec](https://github.com/murphysec
 | **[Added]** | `dfscan --sbom-format spdx-json`, with `spdx` as a shorthand | Export local SPDX 2.3 with PURLs for external vulnerability scanners; the existing `msdx1.1+json` format remains supported |
 | **[Changed]** | The existing `sbom` command delegates to the `dfscan --sbom-format spdx-json` pipeline | Both commands share filters, warnings, and error handling; `sbom --out -` writes to stdout |
 | **[Added]** | `--exclude-dev` and `--direct-only` | Filter packages and relationships in either SBOM output format |
-| **[Changed]** | More ecosystem PURLs, additional SPDX metadata, `documentDescribes`, warning annotations, and stable relationship ordering | Package names no longer include their versions; missing PURL mappings are reported explicitly so an identification gap is visible |
+| **[Changed]** | More ecosystem PURLs, additional SPDX metadata, warning annotations, and stable relationship ordering | Package names no longer include their versions; missing PURL mappings are reported explicitly so an identification gap is visible |
+| **[Fixed]** | SPDX marks direct dependencies with `SPDXRef-DOCUMENT DEPENDS_ON` and correctly links scanned transitive dependencies | Consumers can distinguish project dependencies from package-to-package dependency edges without broken chains |
 | **[Added]** | `--maven-command` on `scan` / `dfscan` | Select a Maven executable; this option is not available on the simplified `sbom` command |
 | **[Fixed]** | Forward `--no-build` to the SBOM scan task; reject `--sbom-output` without a format | Skip supported build paths; require an explicit SBOM format to avoid accidentally selecting a platform scan |
 | **[Fixed]** | Inspector failures are surfaced; scan strategies serialize their actual values | Local inspector failures produce stderr diagnostics and a nonzero exit code, while preserving a partial SBOM where possible; degradation warnings are included in the output |
@@ -32,7 +33,7 @@ This project is based on [murphysecurity/murphysec](https://github.com/murphysec
 | **[Fixed]** | Go `replace`, preferred `vendor/modules.txt` input, and module root/direct dependency edges | Report replacement identities/versions, use vendored module inventories, and retain direct dependency relationships in the Go SBOM |
 | **[Fixed]** | Standalone npm v1/v2/v3 `package-lock.json`, workspace graphs, installation locations, and development flags | Scan without root/member `package.json` files, preserve distinct transitive versions, and report malformed lockfiles or missing required references |
 | **[Fixed]** | R / renv ecosystem corrected from `spm` to `cran` | Emit `pkg:cran/...` rather than identifying R packages as Swift packages |
-| **[Changed]** | Fork build/release workflow; removal of some inherited workflows and issue templates | Build Linux / macOS / Windows amd64 and arm64 artifacts with `SHA256SUMS`; check this fork's Releases for available builds |
+| **[Changed]** | Fork build/release workflow; removal of some inherited workflows and issue templates | Linux / macOS release assets are `.tar.gz`, Windows assets are `.zip`, and `SHA256SUMS` is generated; check this fork's Releases for available builds |
 
 See the [CLI](cmd/murphy/internal/scan/), [SPDX formatter](inspector/textual_formatter.go), [Maven](module/maven/), [Go](module/go_mod/), [npm](module/npm/), and [release workflow](.github/workflows/build.yml) implementations.
 
@@ -40,7 +41,7 @@ See the [CLI](cmd/murphy/internal/scan/), [SPDX formatter](inspector/textual_for
 
 ### Install this fork
 
-Choose a suitable build from [winezer0/murphysec Releases](https://github.com/winezer0/murphysec/releases). Build from source if there is no suitable release or you need changes in the current source. The upstream installers and Releases linked in the archived READMEs do not guarantee these fork changes.
+Choose a suitable build from [winezer0/murphysec Releases](https://github.com/winezer0/murphysec/releases). Linux / macOS assets are `.tar.gz` archives and Windows assets are `.zip`; extract the archive before running the binary. Build from source if there is no suitable release or you need changes in the current source. The upstream installers and Releases linked in the archived READMEs do not guarantee these fork changes.
 
 Source builds require Git and **Go 1.24.0 or later**, as specified in [go.mod](go.mod).
 
@@ -210,4 +211,4 @@ go test ./...
 
 OSV integration tests additionally require `OSV_SCANNER`; they are skipped when unset. See [OSV_SCANNER_COMPATIBILITY.md](OSV_SCANNER_COMPATIBILITY.md) for commands, verified inputs, and the distinction between online tests and offline fixtures.
 
-Licensed under the [Apache License 2.0](LICENSE), retaining the original project's copyright and license notices. See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidance.
+Licensed under the [Apache License 2.0](LICENSE), retaining the original project's copyright and license notices.

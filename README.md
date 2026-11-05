@@ -23,7 +23,8 @@
 | **[新增]** | `dfscan` 支持 `--sbom-format spdx-json`，也接受简写 `spdx` | 可在本地导出带 PURL 的 SPDX 2.3，交给第三方漏洞扫描器；原有 `msdx1.1+json` 格式继续支持 |
 | **[修改]** | 原有 `sbom` 命令复用 `dfscan --sbom-format spdx-json` 的处理流程 | 两个入口共享过滤、告警和错误处理；`sbom --out -` 支持标准输出 |
 | **[新增]** | `--exclude-dev`、`--direct-only` | 在两种 SBOM 输出格式中按需排除开发依赖、仅保留直接依赖，同时过滤依赖关系 |
-| **[修改]** | 扩展多生态 PURL；补充 SPDX 文档元数据、`documentDescribes` 和告警 annotation，稳定关系输出顺序 | 包名不再混入版本；没有 PURL 映射的生态会被明确标记，避免把无法匹配误认为没有漏洞 |
+| **[修改]** | 扩展多生态 PURL；补充 SPDX 文档元数据与告警 annotation，稳定关系输出顺序 | 包名不再混入版本；没有 PURL 映射的生态会被明确标记，避免把无法匹配误认为没有漏洞 |
+| **[修复]** | SPDX 依赖图以 `SPDXRef-DOCUMENT DEPENDS_ON` 标记直接依赖，并正确连接扫描到的传递依赖 | 消费方可区分项目直接依赖与包间传递关系，避免依赖链断开 |
 | **[新增]** | `scan` / `dfscan` 支持 `--maven-command` | 可指定 Maven 可执行文件路径；`sbom` 简化入口不提供此参数 |
 | **[修复]** | SBOM 路径正确传递 `--no-build`；仅指定 `--sbom-output` 时提前报错 | 跳过受此开关控制的构建；导出时必须明确指定 `--sbom-format`，避免意外进入平台扫描 |
 | **[修复]** | inspector 失败不再被忽略，扫描策略按实际值序列化 | 本地扫描失败时输出 stderr 提示、非零退出码，并尽可能保留带告警的部分 SBOM；降级原因也写入输出 |
@@ -32,7 +33,7 @@
 | **[修复]** | Go 应用 `replace`，优先读取 `vendor/modules.txt`，补充主模块根节点及直接依赖边 | 报告替换后的模块身份/版本；vendor 项目使用 vendored 模块清单；不再生成完全无关系的 Go SBOM |
 | **[修复]** | npm 支持独立 `package-lock.json` v1/v2/v3；修正 workspace、嵌套安装位置和开发依赖处理 | 缺少根/成员 `package.json` 时仍可扫描锁文件；保留不同分支的传递版本；损坏或缺少必需引用的锁文件明确报错 |
 | **[修复]** | R / renv 的 ecosystem 从误标的 `spm` 改为 `cran` | R 包使用 `pkg:cran/...`，避免按 Swift 包识别 |
-| **[修改]** | 调整本分支构建发布流程，移除继承的部分工作流与 issue 模板 | 发布流程面向 Linux / macOS / Windows 的 amd64、arm64 构建，并生成 `SHA256SUMS`；是否已有对应发布请查看本分支 Releases |
+| **[修改]** | 调整本分支构建发布流程，移除继承的部分工作流与 issue 模板 | Linux / macOS 发布产物为 `.tar.gz`，Windows 为 `.zip`，并生成 `SHA256SUMS`；是否已有对应发布请查看本分支 Releases |
 
 实现可查阅 [CLI](cmd/murphy/internal/scan/)、[SPDX 格式化器](inspector/textual_formatter.go)、[Maven](module/maven/)、[Go](module/go_mod/)、[npm](module/npm/) 和 [发布流程](.github/workflows/build.yml)。
 
@@ -40,7 +41,7 @@
 
 ### 安装本分支
 
-从 [winezer0/murphysec Releases](https://github.com/winezer0/murphysec/releases) 选择本分支发布的对应平台产物；若没有所需发布，或要使用当前源码中的改动，请从源码构建。旧 README 中的上游安装脚本和上游 Releases 不保证包含本分支改动。
+从 [winezer0/murphysec Releases](https://github.com/winezer0/murphysec/releases) 选择本分支发布的对应平台产物；Linux / macOS 下载 `.tar.gz`，Windows 下载 `.zip`，解压后运行。若没有所需发布，或要使用当前源码中的改动，请从源码构建。旧 README 中的上游安装脚本和上游 Releases 不保证包含本分支改动。
 
 源码构建需要 Git 和 **Go 1.24.0 或更高版本**（以 [go.mod](go.mod) 为准）。
 
@@ -210,4 +211,4 @@ go test ./...
 
 OSV 集成测试需要额外设置 `OSV_SCANNER`；未设置时跳过。运行方法、已验证输入和在线/离线测试区别见 [OSV_SCANNER_COMPATIBILITY.md](OSV_SCANNER_COMPATIBILITY.md)。
 
-遵循 [Apache License 2.0](LICENSE)，保留原项目的版权与许可证声明。贡献说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+遵循 [Apache License 2.0](LICENSE)，保留原项目的版权与许可证声明。
