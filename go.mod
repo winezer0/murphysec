@@ -8,8 +8,8 @@ require (
 	github.com/Masterminds/semver v1.5.0
 	github.com/antchfx/xmlquery v1.5.0
 	github.com/antlr4-go/antlr/v4 v4.13.1
+	github.com/aquasecurity/go-pep440-version v0.0.1
 	github.com/bahlo/generic-list-go v0.2.0
-	github.com/dlclark/regexp2 v1.11.4
 	github.com/go-git/go-git/v5 v5.13.1
 	github.com/iseki0/go-yarnlock v0.1.1
 	github.com/iseki0/machineid v0.0.0-20240820072516-35aa9673a496
@@ -45,11 +45,17 @@ require (
 )
 
 require (
+	deps.dev/util/semver v0.0.0-20261117043703-02e0c2773eee // indirect
+	github.com/shyim/go-version v0.0.0-20260726121354-c0841a28db20 // indirect
+)
+
+require (
 	dario.cat/mergo v1.0.1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.1.5 // indirect
 	github.com/antchfx/xpath v1.3.5 // indirect
 	github.com/antlr/antlr4/runtime/Go/antlr/v4 v4.0.0-20230512164433-5d1fd1a340c9 // indirect
+	github.com/aquasecurity/go-version v0.0.1 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cloudflare/circl v1.5.0 // indirect
@@ -80,6 +86,7 @@ require (
 	github.com/rs/xid v1.6.0 // indirect
 	github.com/sergi/go-diff v1.3.2-0.20230802210424-5b0b94c5c0d3 // indirect
 	github.com/skeema/knownhosts v1.3.0 // indirect
+	github.com/winezer0/opensca/versionaudit v0.0.0
 	github.com/xanzy/go-gitlab v0.115.0 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
@@ -88,5 +95,8 @@ require (
 	golang.org/x/term v0.37.0 // indirect
 	golang.org/x/time v0.9.0 // indirect
 	golang.org/x/tools v0.38.0 // indirect
+	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 )
+
+replace github.com/winezer0/opensca/versionaudit => ../opensca/versionaudit

@@ -109,9 +109,10 @@ func analyzeTc(ctx context.Context, tc parser.ITableconstructorContext) []model.
 		}
 		deps = append(deps, model.DependencyItem{
 			Component: model.Component{
-				CompName:    name,
-				CompVersion: value,
-				EcoRepo:     _EcoRepo,
+				CompName:        name,
+				CompVersion:     value,
+				DeclaredVersion: value,
+				EcoRepo:         _EcoRepo,
 			},
 			DependencyRelation: model.DependencyRelationDirect,
 			IsOnline:           model.IsOnlineTrue(),

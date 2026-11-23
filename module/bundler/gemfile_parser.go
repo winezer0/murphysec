@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"strings"
 )
 
 type gem struct {
@@ -57,7 +58,11 @@ func (gf *gemfile) parseGemfile(scanner *bufio.Scanner, groups string) {
 			gem.Name = REGEX_GEM.FindStringSubmatch(line)[1]
 		}
 		if REGEX_VERSION.MatchString(line) {
-			gem.Version = REGEX_VERSION.FindStringSubmatch(line)[1]
+			versions := []string{}
+			for _, match := range REGEX_VERSION.FindAllStringSubmatch(line, -1) {
+				versions = append(versions, match[1])
+			}
+			gem.Version = strings.Join(versions, ", ")
 		}
 		if REGEX_GIT.MatchString(line) {
 			gem.Git = REGEX_GIT.FindStringSubmatch(line)[1]

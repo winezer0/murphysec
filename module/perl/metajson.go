@@ -18,9 +18,10 @@ func (m *meta) deps() (r []model.DependencyItem) {
 	for _, it := range m.RuntimeReqs {
 		r = append(r, model.DependencyItem{
 			Component: model.Component{
-				CompName:    it.Name,
-				CompVersion: it.Version,
-				EcoRepo:     EcoRepo,
+				CompName:        it.Name,
+				CompVersion:     it.Version,
+				DeclaredVersion: it.Version,
+				EcoRepo:         EcoRepo,
 			},
 		})
 	}

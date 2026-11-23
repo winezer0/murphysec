@@ -3,8 +3,8 @@ package poetry
 import (
 	"context"
 	"fmt"
+	"github.com/murphysecurity/murphysec/module/python/requirements"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/murphysecurity/murphysec/model"
@@ -46,9 +46,9 @@ func (Inspector) InspectProject(ctx context.Context) error {
 	if e != nil {
 		return errors.Wrap(e, "PoetryInspector")
 	}
-	cmap := map[string]string{}
+	cmap := map[string]model.DependencyItem{}
 	for _, it := range manifest.Dependencies {
-		cmap[it.CompName] = it.CompVersion
+		cmap[it.CompName] = it
 	}
 	lockFiles := []string{
 		filepath.Join(task.Dir(), "poetry.lock.py"),
@@ -61,7 +61,7 @@ func (Inspector) InspectProject(ctx context.Context) error {
 		}
 		if deps, e := parsePoetryLock(ctx, lockFile); e == nil {
 			for _, it := range deps {
-				cmap[it.CompName] = it.CompVersion
+				cmap[it.CompName] = it
 			}
 		}
 		break
@@ -71,11 +71,7 @@ func (Inspector) InspectProject(ctx context.Context) error {
 		ModuleName:     manifest.Name,
 		ModulePath:     pyprojectFile,
 	}
-	for k, v := range cmap {
-		var di model.DependencyItem
-		di.CompName = k
-		di.CompVersion = v
-		di.EcoRepo = EcoRepo
+	for _, di := range cmap {
 		module.Dependencies = append(module.Dependencies, di)
 	}
 
@@ -87,8 +83,6 @@ type Manifest struct {
 	Name         string
 	Dependencies []model.DependencyItem
 }
-
-var splitVersionPattern = regexp.MustCompile("[<>=~]?=")
 
 func parsePoetry(input []byte) (*Manifest, error) {
 	root := &tomlTree{}
@@ -120,24 +114,23 @@ func parsePoetry(input []byte) (*Manifest, error) {
 			if !ok {
 				continue
 			}
-			var r = splitVersionPattern.Split(s, 2)
-			if len(r) != 2 || strings.TrimSpace(r[0]) == "" {
-				continue
+			for name, constraint := range requirements.Declarations(s) {
+				m[name] = constraint
 			}
-			m[strings.TrimSpace(r[0])] = strings.TrimSpace(r[1])
 		}
 	}
 
 	// 构建依赖项列表
 	var deps []model.DependencyItem
 	for k, v := range m {
-		v := strings.Trim(fmt.Sprint(v), "~^* ")
+		v := strings.TrimSpace(fmt.Sprint(v))
 		if v == "" {
 			continue
 		}
 		var di model.DependencyItem
 		di.CompName = k
 		di.CompVersion = v
+		di.DeclaredVersion = v
 		di.EcoRepo = EcoRepo
 		deps = append(deps, di)
 	}

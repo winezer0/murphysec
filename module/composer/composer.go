@@ -146,9 +146,10 @@ func _buildDepTree(lockfile map[string]Package, visitedDep map[string]struct{}, 
 	defer delete(visitedDep, targetName)
 	rs := &model.DependencyItem{
 		Component: model.Component{
-			CompName:    targetName,
-			CompVersion: versionConstraint,
-			EcoRepo:     EcoRepo,
+			CompName:        targetName,
+			CompVersion:     versionConstraint,
+			DeclaredVersion: versionConstraint,
+			EcoRepo:         EcoRepo,
 		},
 	}
 	pkg := lockfile[rs.CompName]
@@ -159,6 +160,7 @@ func _buildDepTree(lockfile map[string]Package, visitedDep map[string]struct{}, 
 		return rs // fallback
 	}
 	rs.CompVersion = pkg.Version
+	rs.DeclaredVersion = ""
 	for _, requiredPkgName := range pkg.Require {
 		node := _buildDepTree(lockfile, visitedDep, requiredPkgName, "") // ignore transitive dependency version constraint
 		if node != nil {

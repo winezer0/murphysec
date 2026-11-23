@@ -169,9 +169,10 @@ func _convDep(input []DepElement) []model.DependencyItem {
 	for _, it := range input {
 		rs = append(rs, model.DependencyItem{
 			Component: model.Component{
-				CompName:    it.CompName(),
-				CompVersion: it.Version,
-				EcoRepo:     EcoRepo,
+				CompName:        it.CompName(),
+				CompVersion:     it.Version,
+				DeclaredVersion: it.Version,
+				EcoRepo:         EcoRepo,
 			},
 			Dependencies:       _convDep(it.Children),
 			DependencyRelation: model.DependencyRelationTransitive,

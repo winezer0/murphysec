@@ -6,6 +6,7 @@ import (
 	"github.com/murphysecurity/murphysec/infra/logctx"
 	"github.com/vifraa/gopom"
 	"go.uber.org/zap"
+	"strings"
 )
 
 func BuildDepTree(ctx context.Context, resolver *PomResolver, coordinate Coordinate) *Dependency {
@@ -49,7 +50,7 @@ func (d *depAnalyzer) analyze(coordinate Coordinate) *Dependency {
 			Children:   []Dependency{},
 			Scope:      it.Scope,
 		}
-		if d.Coordinate.IsBad() {
+		if d.Coordinate.IsBad() && !strings.ContainsAny(d.Coordinate.Version, "[(") {
 			d.Coordinate.Version = ""
 		}
 		for _, it := range it.Children {
@@ -84,6 +85,9 @@ outer:
 			visited[cur.Coordinate] = struct{}{}
 		}
 
+		if strings.ContainsAny(cur.Version, "[(") {
+			continue
+		}
 		pom, e := d.resolver.ResolvePom(d.Context, cur.Coordinate)
 		if e != nil {
 			logger.Warn("Resolve dependency failed", zap.Error(e), zap.Any("coordinate", cur.Coordinate))

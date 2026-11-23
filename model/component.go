@@ -1,8 +1,10 @@
 package model
 
 type Component struct {
-	CompName    string `json:"comp_name"`
-	CompVersion string `json:"comp_version"`
+	DeclaredVersion string `json:"declared_version,omitempty"`
+	VersionSource   string `json:"version_source,omitempty"`
+	CompName        string `json:"comp_name"`
+	CompVersion     string `json:"comp_version"`
 	EcoRepo
 }
 

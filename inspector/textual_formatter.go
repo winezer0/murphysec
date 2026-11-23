@@ -82,6 +82,10 @@ func BuildSpdxWithNotes(task *model.ScanTask, notes []string) []byte {
 			"versionInfo":  node.CompVersion,
 			"fileAnalyzed": false,
 		}
+		provenance, err := json.Marshal(map[string]string{"declared_version": node.DeclaredVersion, "version_source": node.VersionSource})
+		if err == nil {
+			m["comment"] = string(provenance)
+		}
 		var externalRefs = make([]map[string]any, 0)
 		// A native package-manager reference is kept where one exists, but the
 		// purl is what actually matters downstream: SBOM consumers such as

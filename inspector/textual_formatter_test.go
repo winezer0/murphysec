@@ -251,3 +251,41 @@ func TestBuildSpdxPreservesDirectDependencyRoots(t *testing.T) {
 		t.Errorf("documentDescribes = %v, should not misidentify a dependency as the project root", document.DocumentDescribes)
 	}
 }
+
+func TestBuildSpdxPreservesDifferentVersionsOfSamePackage(t *testing.T) {
+	task := &model.ScanTask{Modules: []model.Module{{Dependencies: []model.DependencyItem{
+		{Component: model.Component{CompName: "aiohttp", CompVersion: "3.14.4", EcoRepo: model.EcoRepo{Ecosystem: "pypi"}}},
+		{Component: model.Component{CompName: "aiohttp", CompVersion: "3.8.0", EcoRepo: model.EcoRepo{Ecosystem: "pypi"}}},
+	}}}}
+	var document struct {
+		Packages []struct {
+			Name         string `json:"name"`
+			Version      string `json:"versionInfo"`
+			ExternalRefs []struct {
+				Type     string `json:"referenceType"`
+				Location string `json:"referenceLocator"`
+			} `json:"externalRefs"`
+		} `json:"packages"`
+	}
+	if err := json.Unmarshal(BuildSpdx(task), &document); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{"pkg:pypi/aiohttp@3.14.4": false, "pkg:pypi/aiohttp@3.8.0": false}
+	for _, pkg := range document.Packages {
+		if pkg.Name != "aiohttp" {
+			continue
+		}
+		for _, ref := range pkg.ExternalRefs {
+			if ref.Type == "purl" {
+				if _, ok := want[ref.Location]; ok {
+					want[ref.Location] = true
+				}
+			}
+		}
+	}
+	for purl, found := range want {
+		if !found {
+			t.Errorf("SPDX did not preserve component %s", purl)
+		}
+	}
+}

@@ -40,9 +40,10 @@ func (Inspector) InspectProject(ctx context.Context) error {
 		for _, j := range m.Gems {
 			dep = append(dep, model.DependencyItem{
 				Component: model.Component{
-					CompName:    j.Name,
-					CompVersion: j.Version,
-					EcoRepo:     EcoRepo,
+					CompName:        j.Name,
+					CompVersion:     j.Version,
+					DeclaredVersion: j.Version,
+					EcoRepo:         EcoRepo,
 				},
 				DependencyRelation: model.DependencyRelationDirect,
 			})

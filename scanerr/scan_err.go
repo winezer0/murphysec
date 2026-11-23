@@ -49,6 +49,7 @@ const KindConanFailed = "conan_failed"
 const KindDotnetNotFound = "dotnet_not_found"
 const KindNugetFailed = "nuget_failed"
 const KindInspectorFailed = "inspector_failed"
+const KindPythonResolutionDegraded = "python_resolution_degraded"
 
 // KindGoModExcludeHit 表示一条 require 的版本同时被 go.mod 的 exclude 排除。
 //

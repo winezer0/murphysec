@@ -188,9 +188,10 @@ func mergePackageJsonIntoModule(module *model.Module, packageFile *pkgFile) {
 	for k, v := range packageFile.Dependencies {
 		module.Dependencies = append(module.Dependencies, model.DependencyItem{
 			Component: model.Component{
-				CompName:    k,
-				CompVersion: v,
-				EcoRepo:     EcoRepo,
+				CompName:        k,
+				CompVersion:     v,
+				DeclaredVersion: v,
+				EcoRepo:         EcoRepo,
 			},
 			DependencyRelation: model.DependencyRelationDirect,
 			IsOnline:           model.IsOnlineTrue(),
@@ -199,9 +200,10 @@ func mergePackageJsonIntoModule(module *model.Module, packageFile *pkgFile) {
 	for k, v := range packageFile.DevDependencies {
 		module.Dependencies = append(module.Dependencies, model.DependencyItem{
 			Component: model.Component{
-				CompName:    k,
-				CompVersion: v,
-				EcoRepo:     EcoRepo,
+				CompName:        k,
+				CompVersion:     v,
+				DeclaredVersion: v,
+				EcoRepo:         EcoRepo,
 			},
 			DependencyRelation: model.DependencyRelationDirect,
 			IsOnline:           model.IsOnlineFalse(),

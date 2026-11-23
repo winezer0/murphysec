@@ -100,12 +100,16 @@ func ScanMavenProject(ctx context.Context, task *model.InspectionTask) ([]model.
 		if !checkMavenModule(ctx, entry.relativePath) {
 			continue
 		}
+		dependencies := convDeps(entry.children)
+		if useBackupResolver {
+			preserveDeclarations(dependencies)
+		}
 		task.AddModule(model.Module{
 			PackageManager: "maven",
 			ModuleName:     entry.coordinate.Name(),
 			ModuleVersion:  entry.coordinate.Version,
 			ModulePath:     filepath.Join(dir, entry.relativePath),
-			Dependencies:   convDeps(entry.children),
+			Dependencies:   dependencies,
 			ScanStrategy:   strategy,
 		})
 	}
@@ -155,4 +159,12 @@ func _convDep(dep Dependency) *model.DependencyItem {
 var EcoRepo = model.EcoRepo{
 	Ecosystem:  "maven",
 	Repository: "",
+}
+
+// preserveDeclarations labels static POM evidence before endpoint selection.
+func preserveDeclarations(deps []model.DependencyItem) {
+	for i := range deps {
+		deps[i].DeclaredVersion = deps[i].CompVersion
+		preserveDeclarations(deps[i].Dependencies)
+	}
 }

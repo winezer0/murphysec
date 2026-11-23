@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/murphysecurity/murphysec/module/python/requirements"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -25,7 +26,7 @@ netaddr>=0.7.18 # BSD
 `
 	var expect = `GitPython1.0.1 Jinja22.8 docker2.4.2 gitdb0.6.4 netaddr0.7.18 oslo.config5.1.0 oslo.utils3.33.0 pbr2.0.0 setuptools16.0.0 six1.10.0`
 	var r []string
-	for k, v := range parseRequirements(data) {
+	for k, v := range requirements.Parse(data) {
 		r = append(r, k+v)
 	}
 	sort.Strings(r)
@@ -52,5 +53,5 @@ aiohappyeyeballs==2.6.1 \
     --hash=sha256:c3f9d0113123803ccadfdf3f0faa505bc78e6a72d1cc4806cbd719826e943558 \
     --hash=sha256:f349ba8f4b75cb25c99c5c2d84e997e485204d2902a9597802b0371f09331fb8
 `
-	fmt.Println(parseRequirements(data))
+	fmt.Println(requirements.Parse(data))
 }

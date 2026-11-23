@@ -67,6 +67,7 @@ func readIvyXml(ctx context.Context, reader io.Reader) (*model.Module, error) {
 		}
 		name := node.SelectAttr("name")
 		version := node.SelectAttr("rev")
+		declaration := version
 		if org == "" || name == "" {
 			return
 		}
@@ -76,9 +77,10 @@ func readIvyXml(ctx context.Context, reader io.Reader) (*model.Module, error) {
 		}
 		module.Dependencies = append(module.Dependencies, model.DependencyItem{
 			Component: model.Component{
-				CompName:    org + ":" + name,
-				CompVersion: version,
-				EcoRepo:     EcoRepo,
+				CompName:        org + ":" + name,
+				CompVersion:     version,
+				DeclaredVersion: declaration,
+				EcoRepo:         EcoRepo,
 			},
 			IsOnline:           model.IsOnlineTrue(),
 			DependencyRelation: model.DependencyRelationDirect,

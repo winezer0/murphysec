@@ -100,9 +100,10 @@ func analysis(ctx context.Context, path string) (result []model.DependencyItem, 
 		seenPackages[key] = true
 		result = append(result, model.DependencyItem{
 			Component: model.Component{
-				CompName:    pkgRef.Include,
-				CompVersion: pkgRef.Version,
-				EcoRepo:     EcoRepo,
+				CompName:        pkgRef.Include,
+				CompVersion:     pkgRef.Version,
+				DeclaredVersion: pkgRef.Version,
+				EcoRepo:         EcoRepo,
 			},
 			DependencyRelation: model.DependencyRelationDirect,
 		})

@@ -58,6 +58,9 @@ func ManagedInspect(ctx context.Context) error {
 		}
 	}
 
+	if err := expandEndpoints(ctx, scanTask); err != nil {
+		return err
+	}
 	var components []model.Component
 	for _, m := range scanTask.Modules {
 		components = append(components, m.ComponentList()...)

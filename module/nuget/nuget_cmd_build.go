@@ -792,9 +792,10 @@ func listNuget(ctx context.Context, task *model.InspectionTask, solutionPath str
 				seenPackages[key] = true
 				result = append(result, model.DependencyItem{
 					Component: model.Component{
-						CompName:    topLevelPackages.Id,
-						CompVersion: topLevelPackages.RequestedVersion,
-						EcoRepo:     EcoRepo,
+						CompName:        topLevelPackages.Id,
+						CompVersion:     topLevelPackages.ResolvedVersion,
+						DeclaredVersion: requestedIfUnresolved(topLevelPackages.ResolvedVersion, topLevelPackages.RequestedVersion),
+						EcoRepo:         EcoRepo,
 					},
 					DependencyRelation: model.DependencyRelationDirect,
 				})
@@ -837,4 +838,11 @@ func listNuget(ctx context.Context, task *model.InspectionTask, solutionPath str
 		task.AddModule(m)
 	}
 	return nil
+}
+
+func requestedIfUnresolved(resolved, requested string) string {
+	if resolved == "" {
+		return requested
+	}
+	return ""
 }
