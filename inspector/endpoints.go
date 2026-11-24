@@ -3,9 +3,9 @@ package inspector
 import (
 	"context"
 
+	"github.com/murphysecurity/murphysec/internal/versionaudit"
 	"github.com/murphysecurity/murphysec/model"
 	"github.com/murphysecurity/murphysec/scanerr"
-	"github.com/winezer0/opensca/versionaudit"
 )
 
 // expandEndpoints normalizes all inspector outputs before component collection.

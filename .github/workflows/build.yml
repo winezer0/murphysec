@@ -5,6 +5,7 @@ on:
     tags:
       - 'v*'
     branches:
+      - main
       - master
       - 'v*'
       - 'dev*'
@@ -17,12 +18,14 @@ on:
       - '**/*.go'
       - go.mod
       - go.sum
+      - internal/versionaudit/**
       - .github/workflows/*.yml
   pull_request:
     paths:
       - '**/*.go'
       - go.mod
       - go.sum
+      - internal/versionaudit/**
       - .github/workflows/*.yml
   workflow_dispatch:
     inputs:
@@ -79,8 +82,8 @@ jobs:
       - name: Download Go modules
         run: go mod download
 
-      - name: Test Python requirements parsing
-        run: go test ./module/python
+      - name: Test local version audit, inspectors and parsers
+        run: go test -mod=readonly ./internal/versionaudit ./inspector ./module/...
 
   build:
     needs: [resolve-version, test]

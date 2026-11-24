@@ -45,8 +45,8 @@ require (
 )
 
 require (
-	deps.dev/util/semver v0.0.0-20261117043703-02e0c2773eee // indirect
-	github.com/shyim/go-version v0.0.0-20260726121354-c0841a28db20 // indirect
+	deps.dev/util/semver v0.0.0-20261117043703-02e0c2773eee
+	github.com/shyim/go-version v0.0.0-20260726121354-c0841a28db20
 )
 
 require (
@@ -86,7 +86,6 @@ require (
 	github.com/rs/xid v1.6.0 // indirect
 	github.com/sergi/go-diff v1.3.2-0.20230802210424-5b0b94c5c0d3 // indirect
 	github.com/skeema/knownhosts v1.3.0 // indirect
-	github.com/winezer0/opensca/versionaudit v0.0.0
 	github.com/xanzy/go-gitlab v0.115.0 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
@@ -98,5 +97,3 @@ require (
 	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 )
-
-replace github.com/winezer0/opensca/versionaudit => ../opensca/versionaudit

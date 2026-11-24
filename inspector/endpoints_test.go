@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/murphysecurity/murphysec/internal/versionaudit"
 	"github.com/murphysecurity/murphysec/model"
 	"github.com/murphysecurity/murphysec/scanerr"
-	"github.com/winezer0/opensca/versionaudit"
 )
 
 type endpointCatalog struct{ versions []string }

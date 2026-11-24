@@ -28,3 +28,11 @@
 - TanSpec component persistence adds `declared_version` and `version_source` columns. Per the development database policy, no migration is supplied: startup requires a fresh database or a schema already matching this build. Existing databases and history are not modified.
 
 Validation: inspector and module packages passed (302 tests). Rebuilt the local CLI and passed TanSpec actual-binary parity tests for published endpoints, lock precedence, unresolved ranges, and Python declarations.
+
+## Repository-local version audit (2026-11-24)
+
+- The full version-selection and catalog implementation, together with the same contract tests as OpenSCA, is copied into `internal/versionaudit`. This is an ordinary root-module package, not a separate or replaced module. The `../opensca/versionaudit` dependency is removed, fixing clean CI module downloads.
+- The copy is maintained independently by explicit user choice. Version semantics, fallback behavior, environment names and cache behavior remain identical; no other repository supplies runtime policy types or source files.
+- CI now includes the actual default `main` branch and exercises local policy, inspectors and parser packages instead of Python alone. Release tags are not changed or published by this work.
+
+Validation: local version policy passed race detection with 82.1% statement coverage. Inspector/parser regression checks passed (359 tests across 37 packages); `go build -mod=readonly ./...` passed. No remote branch or release tag was modified.
